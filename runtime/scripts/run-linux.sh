@@ -40,7 +40,8 @@ export DISPLAY
 export XDG_SESSION_TYPE
 unset WAYLAND_DISPLAY
 
-"$server" --capture-only &
+cd "$root"
+"$server" --model ../assets/models/lip_model.mnn &
 server_pid=$!
 "$client" &
 client_pid=$!

@@ -24,7 +24,7 @@ namespace
   struct Options
   {
     sof::Config config;
-    std::string ipc { "sranipal" }, input, output;
+    std::string ipc { "sranipal" };
     bool help {};
     bool capture_only {};
     std::uint32_t seconds {};
@@ -47,18 +47,10 @@ namespace
     return result;
   }
 
-  float real(std::string_view value)
-  {
-    float result {};
-    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), result);
-    if (error != std::errc {} || end != value.data() + value.size() || !std::isfinite(result))
-      throw std::runtime_error("Expected a finite floating point value");
-    return result;
-  }
-
   Options parse(int argc, char** argv)
   {
     Options options;
+    sof::set_text(options.config.model, "../assets/models/lip_model.mnn");
     sof::set_text(options.config.osc_host, "127.0.0.1");
     sof::set_text(options.config.osc_address, "/sranipal/parameters");
     for (int i = 1; i < argc; ++i)
@@ -81,10 +73,6 @@ namespace
         argument_text(options.config.model, value);
       else if (key == "--ipc")
         options.ipc = value;
-      else if (key == "--input")
-        options.input = value;
-      else if (key == "--output")
-        options.output = value;
       else if (key == "--seconds")
         options.seconds = number(value, 1, 86400);
       else if (key == "--threads")
@@ -95,23 +83,15 @@ namespace
         options.config.osc_port = number(value, 1, 65535);
       else if (key == "--osc-address")
         argument_text(options.config.osc_address, value);
-      else if (key == "--mean")
-        options.config.mean = real(value);
-      else if (key == "--scale")
-        options.config.scale = real(value);
       else
         throw std::runtime_error("Unknown option: " + std::string(key));
     }
-    if (options.capture_only && options.config.model[0])
-      throw std::runtime_error("Use either --capture-only or --model");
-    if (!options.help && !options.capture_only && options.config.model[0] == '\0')
-      throw std::runtime_error("--model path/to/model.mnn is required; see --help");
     return options;
   }
 
   void usage()
   {
-    std::cout << "sof-server (--model model.mnn | --capture-only) [options]\n" "  --capture-only    Capture and preview without inference or OSC\n" "  --seconds N       Stop after N seconds (optional)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --input NAME --output NAME   Select model tensors\n" "  --mean F --scale F RGB normalization: (pixel - mean) * scale (0, 1/255)\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
+    std::cout << "sof-server [options]\n" "  --capture-only    Capture and preview without inference or OSC\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --seconds N       Stop after N seconds (optional)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
   }
 
   int serve(const Options& options)
@@ -131,7 +111,7 @@ namespace
       std::unique_ptr<sof::OscSender> osc;
       if (!options.capture_only)
       {
-        inference = sof::open_mnn(options.config, options.input, options.output);
+        inference = sof::open_lip_mnn(options.config);
         osc = std::make_unique<sof::OscSender>(options.config.osc_host.data(),
           static_cast<std::uint16_t>(options.config.osc_port),
           options.config.osc_address.data());
@@ -231,7 +211,8 @@ namespace
           previous_captured = status.frames_captured;
           previous_inferred = status.frames_inferred;
           rate_time = now;
-          std::cout << "Capture: " << status.capture_fps << " fps, " << status.frames_captured
+          std::cout << "Capture: " << status.capture_fps << " fps, inference: " << status.inference_fps
+                    << " fps (" << status.inference_ms << " ms), " << status.frames_captured
                     << " frames\n";
         }
         status.state = controls.paused ? sof::ServerState::paused : sof::ServerState::running;

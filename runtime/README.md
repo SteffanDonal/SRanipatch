@@ -34,13 +34,13 @@ Stage deployment files with `cmake --install build/<preset> --config Release --c
 ## Run
 
 ```sh
-sof-server --model /path/to/model.mnn
+sof-server
 sof-client
 ```
 
-Run `sof-server --help` for normalization, tensor selection, OSC and IPC options. Both processes must use the same `--ipc` name. Model configuration is supplied at server startup; GUI controls apply live.
+Run `sof-server --help` for model, OSC and IPC options. Both processes must use the same `--ipc` name. Model configuration is supplied at server startup; GUI controls apply live.
 
-Linux GUI builds include both GLFW Wayland and X11 backends. GLFW normally selects the backend from the session environment. On Steam Frame with Gamescope 3.16.28, use Gamescope's XWayland display because its native `xdg-shell` path currently does not route mouse and close events reliably. `sh scripts/run-linux.sh` selects that path, starts the capture-only server and client together, and always stops the server when the client exits or the job is interrupted.
+Linux GUI builds include both GLFW Wayland and X11 backends. GLFW normally selects the backend from the session environment. On Steam Frame with Gamescope 3.16.28, use Gamescope's XWayland display because its native `xdg-shell` path currently does not route mouse and close events reliably. `sh scripts/run-linux.sh` selects that path, starts the lip-inference server and client together, and always stops the server when the client exits or the job is interrupted.
 
 For the VIVE Facial Tracker on Windows:
 
@@ -51,14 +51,14 @@ For the VIVE Facial Tracker on Windows:
 
 Capture is intentionally fixed to the VIVE Facial Tracker: both platforms locate the single USB `0BB4:0321` capture device, apply its vendor initialization sequence, and open native 400×400 YUY2/YUYV at 60 fps. There are no device or format overrides. The client displays the packed stereo image or either camera separately. `sof-capture --frames 120 --output frame.ppm` checks the same capture path without inference or a GUI. The [device protocol](https://github.com/LordOfDragons/vivefacialtracker) supports 64- and 384-byte extension payloads; decoding preserves the raw Y bytes and ignores chroma.
 
-The files in `../assets/models/` are Git LFS JSON/NPZ weights, not converted MNN graphs. Their network architecture, preprocessing and eye/lip output mapping still need to be established. The generic [MNN adapter](src/inference/mnn.cpp) accepts one fixed float32 RGB image input, bilinearly resizes it, applies `(pixel - mean) * scale`, and exposes one selected float output as unnamed parameters. It is a scaffold contract, not a claim about those weights. No demo or synthetic inference is included.
+The lip model is a fixed MNN graph with a float32 `[1,2,100,100]` stereo input and 30-value internal output. The server splits the packed frame into its left and right grayscale views, resizes each independently, scales luminance to `[0,1]`, and converts the model output to SRanipal's ordered 37 lip shapes. `scripts/export-lip-onnx.py` reproduces the intermediate ONNX graph from the Git LFS NPZ archive; conversion to MNN uses MNN 3.2.0's `MNNConvert`.
 
 ## Platform boundaries
 
 - Linux: [V4L2 MMAP streaming](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/mmap.html) through the kernel's `uvcvideo` driver. It discovers the capture node belonging to USB `0BB4:0321`, controls extension unit 4 through `UVCIOC_CTRL_QUERY`, and captures 400×400 YUYV at 60 fps while preserving the VIVE's raw luminance bytes. The user needs access to the video device.
 - Windows: [Media Foundation source reader](https://learn.microsoft.com/en-us/windows/win32/medfound/processing-media-data-with-the-source-reader) asynchronous native YUY2 capture. The camera is selected only by VIVE USB VID/PID. Vendor controls use `IKsControl`, with a KS proxy fallback when Media Foundation does not expose topology.
 - IPC: fixed-size, versioned snapshots under a Windows named mutex or Linux `flock`; no process-shared C++ atomics. Server publication and client reads are nonblocking. One server owns each channel. Commands carry revisions with server acknowledgements; heartbeat expiry detects stopped servers. Linux regions are private per user and retained across restarts; Windows names are local to the session. Fixed 400×400 RGB previews are published at roughly 30 Hz, independently of capture rate. Status reads only copy metadata; preview reads skip unchanged frames. Client and server must use the same protocol version.
-- OSC: [OSC 1.0](https://opensoundcontrol.stanford.edu/spec-1_0.html) float arguments in a single UDP message per inference, in parameter order. Default address is `/sranipal/parameters`; destinations are numeric IPv4/IPv6 addresses. Output is bounded to 128 parameters and UDP sends are nonblocking.
+- OSC: [OSC 1.0](https://opensoundcontrol.stanford.edu/spec-1_0.html) float arguments in a single UDP message per inference, in SRanipal lip-shape order. Default address is `/sranipal/parameters`; destinations are numeric IPv4/IPv6 addresses. Output is bounded to 128 parameters and UDP sends are nonblocking.
 
 Capture and inference use separate threads with a latest-frame mailbox. Buffers and host tensors are reused; inference skips stale frames rather than accumulating a queue. A malformed or incomplete camera frame is discarded and counted as a sequence gap; persistent failure to produce any valid frame for five seconds remains fatal. Frame age measures receipt-to-result latency, not exposure-to-result latency. The client polls status at roughly 30 Hz independently of camera/inference rates.
 

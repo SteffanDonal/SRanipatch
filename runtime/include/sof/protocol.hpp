@@ -10,7 +10,7 @@
 namespace sof
 {
   inline constexpr std::uint32_t protocol_magic = 0x534F4631;
-  inline constexpr std::uint32_t protocol_version = 3;
+  inline constexpr std::uint32_t protocol_version = 4;
   inline constexpr std::size_t max_parameters = 128;
   inline constexpr std::uint32_t capture_width = 400;
   inline constexpr std::uint32_t capture_height = 400;

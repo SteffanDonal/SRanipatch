@@ -250,7 +250,8 @@ namespace
           sof::capture_height, sof::capture_fps, status.config.threads);
         ImGui::TextWrapped("OSC: %s:%u %s", status.config.osc_host.data(), status.config.osc_port,
           status.config.osc_address.data());
-        ImGui::Text("RGB normalization: (pixel - %.3f) * %.6f", status.config.mean, status.config.scale);
+        ImGui::TextUnformatted("Lip input: stereo grayscale, 2 x 100 x 100, scaled to [0, 1]");
+        ImGui::TextUnformatted("Lip output: 37 ordered SRanipal v2 shapes");
         ImGui::TextUnformatted("Model settings are supplied to the server at startup.");
         ImGui::EndTable();
       }

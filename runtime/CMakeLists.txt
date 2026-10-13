@@ -95,13 +95,21 @@ if(SOF_BUILD_SERVER)
     add_library(sof_capture STATIC ${capture_source})
     target_link_libraries(sof_capture PUBLIC sof_core)
     sof_target(sof_capture)
-    add_executable(sof-server src/server/main.cpp src/inference/mnn.cpp)
+    add_library(
+        sof_inference
+        STATIC
+        src/inference/mnn.cpp
+        src/inference/lip.cpp
+    )
     target_include_directories(
-        sof-server
+        sof_inference
         SYSTEM
         PRIVATE "${mnn_SOURCE_DIR}/include"
     )
-    target_link_libraries(sof-server PRIVATE sof_capture MNN)
+    target_link_libraries(sof_inference PUBLIC sof_core PRIVATE MNN)
+    sof_target(sof_inference)
+    add_executable(sof-server src/server/main.cpp)
+    target_link_libraries(sof-server PRIVATE sof_capture sof_inference MNN)
     if(WIN32)
         target_link_libraries(
             sof_capture
@@ -110,6 +118,11 @@ if(SOF_BUILD_SERVER)
     endif()
     sof_target(sof-server)
     install(TARGETS sof-server RUNTIME DESTINATION bin COMPONENT Runtime)
+    install(
+        FILES ../assets/models/lip_model.mnn
+        DESTINATION share/sranipal-on-frame/models
+        COMPONENT Runtime
+    )
     add_executable(sof-capture src/capture/main.cpp)
     target_link_libraries(sof-capture PRIVATE sof_capture)
     sof_target(sof-capture)
@@ -139,6 +152,18 @@ if(BUILD_TESTING)
     sof_target(sof-ipc-peer)
     add_test(NAME ipc-process COMMAND sof-tests $<TARGET_FILE:sof-ipc-peer>)
     set_tests_properties(core ipc-process PROPERTIES TIMEOUT 20)
+    if(SOF_BUILD_SERVER)
+        add_executable(sof-inference-tests tests/inference_tests.cpp)
+        target_link_libraries(sof-inference-tests PRIVATE sof_inference MNN)
+        sof_target(sof-inference-tests)
+        add_test(
+            NAME lip-inference
+            COMMAND
+                sof-inference-tests
+                "${CMAKE_CURRENT_SOURCE_DIR}/../assets/models/lip_model.mnn"
+        )
+        set_tests_properties(lip-inference PROPERTIES TIMEOUT 20)
+    endif()
 endif()
 
 set(CPACK_PACKAGE_NAME "sranipal-on-frame")

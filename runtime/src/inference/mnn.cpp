@@ -1,11 +1,14 @@
 #include "sof/inference.hpp"
+#include "sof/lip.hpp"
 
 #include <MNN/Interpreter.hpp>
 #include <MNN/Tensor.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <stdexcept>
+#include <string_view>
 
 namespace sof
 {
@@ -42,9 +45,8 @@ namespace sof
       MNN::Tensor* input_ {};
       MNN::Tensor* output_ {};
       HostTensor input_host_, output_host_;
-      int width_ {}, height_ {};
-      float mean_ {}, scale_ {};
       std::array<std::array<char, 48>, max_parameters> names_ {};
+      LipPostprocessor postprocessor_;
 
       struct Coordinate
       {
@@ -52,27 +54,10 @@ namespace sof
         float weight {};
       };
 
-      std::vector<Coordinate> x_, y_;
-      std::uint32_t source_width_ {}, source_height_ {};
-
-      static void coordinates(std::vector<Coordinate>& dest, int size, std::uint32_t source)
-      {
-        dest.resize(static_cast<std::size_t>(size));
-        for (int i = 0; i < size; ++i)
-        {
-          const float value = std::clamp(
-            (static_cast<float>(i) + 0.5F) * static_cast<float>(source) / static_cast<float>(size) - 0.5F,
-            0.0F, static_cast<float>(source - 1)
-          );
-          const auto first = static_cast<std::uint32_t>(value);
-          dest[static_cast<std::size_t>(i)] = { first, std::min(first + 1, source - 1),
-            value - static_cast<float>(first) };
-        }
-      }
+      std::array<Coordinate, 100> x_ {}, y_ {};
 
     public:
-      Mnn(const Config& config, const std::string& input_name, const std::string& output_name)
-        : mean_(config.mean), scale_(config.scale)
+      explicit Mnn(const Config& config)
       {
         interpreter_.reset(MNN::Interpreter::createFromFile(config.model.data()));
         if (!interpreter_)
@@ -86,71 +71,101 @@ namespace sof
         session_ = interpreter_->createSession(schedule);
         if (!session_)
           throw std::runtime_error("MNN could not create a CPU inference session");
-        if (interpreter_->getSessionInputAll(session_).size() != 1)
-          throw std::runtime_error(
-            "Model requires multiple inputs; implement its contract in the inference adapter"
-          );
-        if (output_name.empty() && interpreter_->getSessionOutputAll(session_).size() != 1)
-          throw std::runtime_error("Select --output for a model with multiple outputs");
-        input_ = interpreter_->getSessionInput(session_, input_name.empty() ? nullptr : input_name.c_str());
-        output_ =
-          interpreter_->getSessionOutput(session_, output_name.empty() ? nullptr : output_name.c_str());
+        if (interpreter_->getSessionInputAll(session_).size() != 1 || interpreter_->getSessionOutputAll(session_).size() != 1)
+          throw std::runtime_error("Lip model must have exactly one input and one output");
+        input_ = interpreter_->getSessionInput(session_, "stereo");
+        output_ = interpreter_->getSessionOutput(session_, "lip_raw");
         if (!input_ || !output_)
-          throw std::runtime_error("Named MNN input or output was not found");
-        if (input_->dimensions() != 4 || input_->batch() != 1 || input_->channel() != 3 || !is_float32(*input_))
-          throw std::runtime_error(
-            "Generic adapter requires a fixed float32 [1,3,H,W] or [1,H,W,3] RGB input"
-          );
-        width_ = input_->width();
-        height_ = input_->height();
-        if (width_ <= 0 || height_ <= 0 || width_ > 8192 || height_ > 8192)
-          throw std::runtime_error("Invalid or dynamic model dimensions; implement its resize contract");
-        if (!is_float32(*output_))
-          throw std::runtime_error("Generic adapter requires float32 output");
+          throw std::runtime_error("Lip model requires tensors named stereo and lip_raw");
+        if (input_->dimensions() != 4 || input_->batch() != 1 || input_->channel() != 2 || input_->width() != 100 || input_->height() != 100 || !is_float32(*input_))
+          throw std::runtime_error("Lip model input must be float32 NCHW [1,2,100,100]");
+        if (!is_float32(*output_) || output_->elementSize() != 30)
+          throw std::runtime_error("Lip model output must contain 30 float32 values");
         input_host_.reset(new MNN::Tensor(input_, MNN::Tensor::CAFFE));
         output_host_.reset(new MNN::Tensor(output_, MNN::Tensor::CAFFE));
         if (!input_host_ || !input_host_->host<float>() || !output_host_ || !output_host_->host<float>())
           throw std::runtime_error("MNN host tensor allocation failed");
-        if (output_host_->elementSize() <= 0 || output_host_->elementSize() > static_cast<int>(max_parameters))
-          throw std::runtime_error(
-            "Selected output exceeds the 128-parameter protocol; implement a model-specific projection"
-          );
-        for (int i = 0; i < output_host_->elementSize(); ++i)
-          set_text(names_[static_cast<std::size_t>(i)], "parameter_" + std::to_string(i));
+        constexpr std::array<std::string_view, lip_parameter_count> names {
+          "jaw_right",
+          "jaw_left",
+          "jaw_forward",
+          "jaw_open",
+          "mouth_ape_shape",
+          "mouth_upper_right",
+          "mouth_upper_left",
+          "mouth_lower_right",
+          "mouth_lower_left",
+          "mouth_upper_overturn",
+          "mouth_lower_overturn",
+          "mouth_pout",
+          "mouth_smile_right",
+          "mouth_smile_left",
+          "mouth_sad_right",
+          "mouth_sad_left",
+          "cheek_puff_right",
+          "cheek_puff_left",
+          "cheek_suck",
+          "mouth_upper_up_right",
+          "mouth_upper_up_left",
+          "mouth_lower_down_right",
+          "mouth_lower_down_left",
+          "mouth_upper_inside",
+          "mouth_lower_inside",
+          "mouth_lower_overlay",
+          "tongue_long_step_1",
+          "tongue_left",
+          "tongue_right",
+          "tongue_up",
+          "tongue_down",
+          "tongue_roll",
+          "tongue_long_step_2",
+          "tongue_up_right_morph",
+          "tongue_up_left_morph",
+          "tongue_down_right_morph",
+          "tongue_down_left_morph",
+        };
+        for (std::size_t i = 0; i < names.size(); ++i)
+          set_text(names_[i], names[i]);
+        const auto fill_coordinates = [](auto& dest, std::uint32_t source) {
+          for (std::size_t i = 0; i < dest.size(); ++i)
+          {
+            const float value =
+              std::clamp((static_cast<float>(i) + 0.5F) * static_cast<float>(source) / 100.0F - 0.5F,
+                0.0F, static_cast<float>(source - 1));
+            const auto first = static_cast<std::uint32_t>(value);
+            dest[i] = { first, std::min(first + 1, source - 1), value - static_cast<float>(first) };
+          }
+        };
+        fill_coordinates(x_, capture_width / 2);
+        fill_coordinates(y_, capture_height);
         interpreter_->releaseModel();
       }
 
       std::uint32_t run(const Frame& frame, std::array<Parameter, max_parameters>& output) override
       {
-        if (!frame.width || !frame.height || frame.rgb.size() != static_cast<std::size_t>(frame.width) * frame.height * 3)
-          throw std::runtime_error("Invalid RGB frame");
-        if (source_width_ != frame.width || source_height_ != frame.height)
-        {
-          coordinates(x_, width_, frame.width);
-          coordinates(y_, height_, frame.height);
-          source_width_ = frame.width;
-          source_height_ = frame.height;
-        }
+        if (frame.width != capture_width || frame.height != capture_height || frame.rgb.size() != static_cast<std::size_t>(capture_width) * capture_height * 3)
+          throw std::runtime_error("Lip inference requires a 400x400 packed stereo RGB frame");
         auto* dest = input_host_->host<float>();
-        const auto plane = static_cast<std::size_t>(width_) * height_;
-        for (int y = 0; y < height_; ++y)
+        constexpr std::size_t plane = 100 * 100;
+        for (std::size_t camera = 0; camera < 2; ++camera)
         {
-          const auto cy = y_[static_cast<std::size_t>(y)];
-          for (int x = 0; x < width_; ++x)
+          const auto x_offset = static_cast<std::uint32_t>(camera) * capture_width / 2;
+          for (std::size_t y = 0; y < 100; ++y)
           {
-            const auto cx = x_[static_cast<std::size_t>(x)];
-            const auto index = static_cast<std::size_t>(y) * width_ + x;
-            const auto p00 = (static_cast<std::size_t>(cy.first) * frame.width + cx.first) * 3;
-            const auto p01 = (static_cast<std::size_t>(cy.first) * frame.width + cx.second) * 3;
-            const auto p10 = (static_cast<std::size_t>(cy.second) * frame.width + cx.first) * 3;
-            const auto p11 = (static_cast<std::size_t>(cy.second) * frame.width + cx.second) * 3;
-            for (std::size_t c = 0; c < 3; ++c)
+            const auto cy = y_[y];
+            for (std::size_t x = 0; x < 100; ++x)
             {
-              const float top = std::lerp(static_cast<float>(frame.rgb[p00 + c]),
-                static_cast<float>(frame.rgb[p01 + c]), cx.weight);
-              const float bottom = std::lerp(static_cast<float>(frame.rgb[p10 + c]),
-                static_cast<float>(frame.rgb[p11 + c]), cx.weight);
-              dest[c * plane + index] = (std::lerp(top, bottom, cy.weight) - mean_) * scale_;
+              const auto cx = x_[x];
+              const auto pixel = [&](std::uint32_t px, std::uint32_t py) {
+                return static_cast<float>(
+                  frame.rgb[(static_cast<std::size_t>(py) * frame.width + x_offset + px) * 3]
+                );
+              };
+              const float top =
+                std::lerp(pixel(cx.first, cy.first), pixel(cx.second, cy.first), cx.weight);
+              const float bottom =
+                std::lerp(pixel(cx.first, cy.second), pixel(cx.second, cy.second), cx.weight);
+              dest[camera * plane + y * 100 + x] = std::lerp(top, bottom, cy.weight) / 255.0F;
             }
           }
         }
@@ -160,23 +175,26 @@ namespace sof
           throw std::runtime_error("MNN inference failed");
         if (!output_->copyToHostTensor(output_host_.get()))
           throw std::runtime_error("MNN output download failed");
-        const auto count = static_cast<std::uint32_t>(output_host_->elementSize());
-        for (std::uint32_t i = 0; i < count; ++i)
+        std::array<float, lip_raw_count> raw {};
+        std::copy_n(output_host_->host<float>(), raw.size(), raw.begin());
+        for (const auto value : raw)
         {
-          const auto value = output_host_->host<float>()[i];
           if (!std::isfinite(value))
             throw std::runtime_error("Model returned a non-finite parameter");
-          output[i].name = names_[i];
-          output[i].value = value;
         }
-        return count;
+        const auto values = postprocessor_.process(raw);
+        for (std::size_t i = 0; i < values.size(); ++i)
+        {
+          output[i].name = names_[i];
+          output[i].value = values[i];
+        }
+        return static_cast<std::uint32_t>(values.size());
       }
     };
   }  // namespace
 
-  std::unique_ptr<Inference> open_mnn(const Config& config, const std::string& input_name,
-    const std::string& output_name)
+  std::unique_ptr<Inference> open_lip_mnn(const Config& config)
   {
-    return std::make_unique<Mnn>(config, input_name, output_name);
+    return std::make_unique<Mnn>(config);
   }
 }  // namespace sof
