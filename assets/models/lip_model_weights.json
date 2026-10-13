@@ -1,0 +1,87 @@
+{
+  "source": "SRanipal_latest\\model\\LPrediction\\lip_opencl.params",
+  "format": "Apache TVM SaveParamDict",
+  "tensors": {
+    "fc6_10_bias": {
+      "shape": [
+        30
+      ],
+      "dtype": "float32",
+      "elements": 30
+    },
+    "fc5_ft_bias": {
+      "shape": [
+        500
+      ],
+      "dtype": "float32",
+      "elements": 500
+    },
+    "conv1_bias": {
+      "shape": [
+        20
+      ],
+      "dtype": "float32",
+      "elements": 20
+    },
+    "conv3_weight": {
+      "shape": [
+        64,
+        48,
+        3,
+        3
+      ],
+      "dtype": "float32",
+      "elements": 27648
+    },
+    "conv2_bias": {
+      "shape": [
+        48
+      ],
+      "dtype": "float32",
+      "elements": 48
+    },
+    "fc6_10_weight": {
+      "shape": [
+        30,
+        500
+      ],
+      "dtype": "float32",
+      "elements": 15000
+    },
+    "conv2_weight": {
+      "shape": [
+        48,
+        20,
+        5,
+        5
+      ],
+      "dtype": "float32",
+      "elements": 24000
+    },
+    "conv3_bias": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "elements": 64
+    },
+    "conv1_weight": {
+      "shape": [
+        20,
+        2,
+        5,
+        5
+      ],
+      "dtype": "float32",
+      "elements": 1000
+    },
+    "fc5_ft_weight": {
+      "shape": [
+        500,
+        25600
+      ],
+      "dtype": "float32",
+      "elements": 12800000
+    }
+  }
+}
