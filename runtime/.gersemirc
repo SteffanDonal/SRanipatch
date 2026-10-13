@@ -1,0 +1,3 @@
+definitions:
+  - CMakeLists.txt
+  - cmake/

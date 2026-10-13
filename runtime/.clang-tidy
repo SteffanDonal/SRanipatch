@@ -1,0 +1,2 @@
+Checks: '-*,bugprone-*,performance-*,portability-*,modernize-use-nullptr,modernize-use-override'
+HeaderFilterRegex: 'include/sof/.*'

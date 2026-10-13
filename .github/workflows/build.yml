@@ -1,0 +1,59 @@
+name: Build
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    defaults:
+      run:
+        working-directory: runtime
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            preset: windows-x64
+          - os: ubuntu-24.04-arm
+            preset: linux-release
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux GUI build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+      - run: cmake --preset ${{ matrix.preset }}
+      - run: cmake --build --preset ${{ matrix.preset }} --parallel 2
+      - run: ctest --preset ${{ matrix.preset }}
+      - name: Stage applications
+        run: cmake --install build/${{ matrix.preset }} --config Release --component Runtime --prefix build/package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: applications-${{ matrix.os }}
+          path: runtime/build/package/
+
+  cross:
+    defaults:
+      run:
+        working-directory: runtime
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+      - run: cmake --preset linux-aarch64
+      - run: cmake --build --preset linux-aarch64 --parallel 2
+
+  sanitizers:
+    defaults:
+      run:
+        working-directory: runtime
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - run: cmake --preset linux-debug -DSOF_BUILD_SERVER=OFF -DSOF_BUILD_CLIENT=OFF
+      - run: cmake --build --preset linux-debug --parallel 2
+      - run: ctest --preset linux-debug

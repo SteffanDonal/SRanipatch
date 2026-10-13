@@ -1,0 +1,55 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": { "BUILD_TESTING": "ON" }
+    },
+    {
+      "name": "windows-x64",
+      "inherits": "base",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "linux-release",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "linux-debug",
+      "inherits": "linux-release",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "SOF_SANITIZE": "ON" }
+    },
+    {
+      "name": "linux-aarch64",
+      "inherits": "linux-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/linux-aarch64.cmake",
+      "cacheVariables": { "SOF_BUILD_CLIENT": "OFF", "BUILD_TESTING": "OFF" }
+    },
+    {
+      "name": "windows-core",
+      "inherits": "windows-x64",
+      "cacheVariables": { "SOF_BUILD_SERVER": "OFF", "SOF_BUILD_CLIENT": "OFF" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "windows-x64", "configurePreset": "windows-x64", "configuration": "Release" },
+    { "name": "windows-core", "configurePreset": "windows-core", "configuration": "Release" },
+    { "name": "linux-release", "configurePreset": "linux-release" },
+    { "name": "linux-debug", "configurePreset": "linux-debug" },
+    { "name": "linux-aarch64", "configurePreset": "linux-aarch64" }
+  ],
+  "testPresets": [
+    { "name": "windows-x64", "configurePreset": "windows-x64", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "windows-core", "configurePreset": "windows-core", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "linux-release", "configurePreset": "linux-release", "output": { "outputOnFailure": true } },
+    { "name": "linux-debug", "configurePreset": "linux-debug", "output": { "outputOnFailure": true } }
+  ]
+}

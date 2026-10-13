@@ -1,0 +1,109 @@
+#pragma once
+
+#include <array>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
+#include <type_traits>
+
+namespace sof
+{
+  inline constexpr std::uint32_t protocol_magic = 0x534F4631;
+  inline constexpr std::uint32_t protocol_version = 1;
+  inline constexpr std::size_t max_parameters = 128;
+
+  inline std::uint64_t monotonic_ns()
+  {
+    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()
+    )
+        .count());
+  }
+
+  template <std::size_t N>
+  void set_text(std::array<char, N>& dest, std::string_view text)
+  {
+    dest.fill('\0');
+    text.copy(dest.data(), text.size() < N - 1 ? text.size() : N - 1);
+  }
+
+  enum class ServerState : std::uint32_t
+  {
+    starting,
+    running,
+    paused,
+    stopped,
+    fault
+  };
+
+  struct Parameter
+  {
+    std::array<char, 48> name {};
+    float value {};
+  };
+
+  struct Config
+  {
+    std::array<char, 256> model {};
+    std::array<char, 128> device {};
+    std::array<char, 64> osc_host {};
+    std::array<char, 128> osc_address {};
+    std::uint32_t width { 640 };
+    std::uint32_t height { 480 };
+    std::uint32_t fps { 30 };
+    std::uint32_t threads { 2 };
+    std::uint32_t osc_port { 9000 };
+    float mean { 0.0F };
+    float scale { 1.0F / 255.0F };
+  };
+
+  struct Status
+  {
+    std::uint64_t heartbeat_ns {};
+    std::uint64_t frames_captured {};
+    std::uint64_t frames_inferred {};
+    std::uint64_t frames_skipped {};
+    std::uint64_t osc_failures {};
+    std::uint64_t applied_revision {};
+    std::uint64_t session_id {};
+    ServerState state { ServerState::starting };
+    std::uint32_t parameter_count {};
+    float capture_fps {};
+    float inference_fps {};
+    float inference_ms {};
+    float frame_age_ms {};
+    std::uint32_t osc_enabled { 1 };
+    std::uint32_t reserved {};
+    Config config {};
+    std::array<Parameter, max_parameters> parameters {};
+    std::array<char, 256> error {};
+  };
+
+  struct Controls
+  {
+    std::uint64_t revision {};
+    std::uint32_t paused {};
+    std::uint32_t osc_enabled { 1 };
+  };
+
+  struct SharedBlock
+  {
+    std::uint32_t magic { protocol_magic };
+    std::uint32_t version { protocol_version };
+    std::uint32_t size { sizeof(SharedBlock) };
+    std::uint32_t reserved {};
+    Status status {};
+    Controls controls {};
+  };
+
+  static_assert(std::is_trivially_copyable_v<SharedBlock>);
+  static_assert(std::is_standard_layout_v<SharedBlock>);
+  static_assert(sizeof(Parameter) == 52);
+  static_assert(sizeof(Config) == 604);
+  static_assert(sizeof(Status) == 7608);
+  static_assert(sizeof(SharedBlock) == 7640);
+  static_assert(offsetof(SharedBlock, status) == 16);
+  static_assert(offsetof(SharedBlock, controls) == 7624);
+  static_assert(sizeof(SharedBlock) < 16 * 1024);
+}  // namespace sof

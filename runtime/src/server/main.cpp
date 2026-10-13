@@ -1,0 +1,261 @@
+#include "sof/capture.hpp"
+#include "sof/inference.hpp"
+#include "sof/ipc.hpp"
+#include "sof/osc.hpp"
+
+#include <atomic>
+#include <charconv>
+#include <cmath>
+#include <csignal>
+#include <iostream>
+#include <mutex>
+#include <stdexcept>
+#include <thread>
+
+namespace
+{
+  volatile std::sig_atomic_t interrupted = 0;
+
+  void interrupt(int)
+  {
+    interrupted = 1;
+  }
+
+  struct Options
+  {
+    sof::Config config;
+    std::string ipc { "sranipal" }, input, output;
+    bool help {};
+  };
+
+  template <std::size_t N>
+  void argument_text(std::array<char, N>& dest, std::string_view value)
+  {
+    if (value.empty() || value.size() >= N)
+      throw std::runtime_error("Argument string is empty or too long");
+    sof::set_text(dest, value);
+  }
+
+  std::uint32_t number(std::string_view value, std::uint32_t minimum, std::uint32_t maximum)
+  {
+    std::uint32_t result {};
+    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), result);
+    if (error != std::errc {} || end != value.data() + value.size() || result < minimum || result > maximum)
+      throw std::runtime_error("Numeric argument is invalid or outside the allowed range");
+    return result;
+  }
+
+  float real(std::string_view value)
+  {
+    float result {};
+    const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), result);
+    if (error != std::errc {} || end != value.data() + value.size() || !std::isfinite(result))
+      throw std::runtime_error("Expected a finite floating point value");
+    return result;
+  }
+
+  Options parse(int argc, char** argv)
+  {
+    Options options;
+#ifdef _WIN32
+    sof::set_text(options.config.device, "0");
+#else
+    sof::set_text(options.config.device, "/dev/video0");
+#endif
+    sof::set_text(options.config.osc_host, "127.0.0.1");
+    sof::set_text(options.config.osc_address, "/sranipal/parameters");
+    for (int i = 1; i < argc; ++i)
+    {
+      const std::string_view key(argv[i]);
+      if (key == "--help" || key == "-h")
+      {
+        options.help = true;
+        continue;
+      }
+      if (++i >= argc)
+        throw std::runtime_error("Missing value for " + std::string(key));
+      const std::string_view value(argv[i]);
+      if (key == "--model")
+        argument_text(options.config.model, value);
+      else if (key == "--device")
+        argument_text(options.config.device, value);
+      else if (key == "--ipc")
+        options.ipc = value;
+      else if (key == "--input")
+        options.input = value;
+      else if (key == "--output")
+        options.output = value;
+      else if (key == "--width")
+        options.config.width = number(value, 2, 8192);
+      else if (key == "--height")
+        options.config.height = number(value, 1, 8192);
+      else if (key == "--fps")
+        options.config.fps = number(value, 1, 240);
+      else if (key == "--threads")
+        options.config.threads = number(value, 1, 64);
+      else if (key == "--osc-host")
+        argument_text(options.config.osc_host, value);
+      else if (key == "--osc-port")
+        options.config.osc_port = number(value, 1, 65535);
+      else if (key == "--osc-address")
+        argument_text(options.config.osc_address, value);
+      else if (key == "--mean")
+        options.config.mean = real(value);
+      else if (key == "--scale")
+        options.config.scale = real(value);
+      else
+        throw std::runtime_error("Unknown option: " + std::string(key));
+    }
+    if (!options.help && options.config.model[0] == '\0')
+      throw std::runtime_error("--model path/to/model.mnn is required; see --help");
+    return options;
+  }
+
+  void usage()
+  {
+    std::cout << "sof-server --model model.mnn [options]\n" "  --device ID       Camera index on Windows; /dev/videoN on Linux\n" "  --width N --height N --fps N  Requested capture mode (640x480 @ 30 by default)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --input NAME --output NAME   Select model tensors\n" "  --mean F --scale F RGB normalization: (pixel - mean) * scale (0, 1/255)\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
+  }
+
+  int serve(const Options& options)
+  {
+    sof::SharedMemory ipc(options.ipc, sof::SharedMemory::Role::server);
+    sof::Status status;
+    sof::Controls controls;
+    status.config = options.config;
+    status.session_id = sof::monotonic_ns();
+    status.heartbeat_ns = status.session_id;
+    ipc.publish(status, controls);
+    try
+    {
+      auto inference = sof::open_mnn(options.config, options.input, options.output);
+      sof::OscSender osc(options.config.osc_host.data(),
+        static_cast<std::uint16_t>(options.config.osc_port),
+        options.config.osc_address.data());
+      sof::LatestFrame latest;
+      std::atomic<std::uint64_t> captured {};
+      std::atomic<bool> capture_fault {};
+      std::mutex error_mutex;
+      std::string capture_error;
+      std::jthread capture([&](std::stop_token stop) {
+        try
+        {
+          auto camera = sof::open_capture(options.config);
+          sof::Frame frame;
+          while (!stop.stop_requested())
+          {
+            if (camera->read(frame, stop))
+            {
+              captured.fetch_add(1, std::memory_order_relaxed);
+              latest.push(frame);
+            }
+          }
+        }
+        catch (const std::exception& error)
+        {
+          {
+            std::lock_guard lock(error_mutex);
+            capture_error = error.what();
+          }
+          capture_fault.store(true, std::memory_order_release);
+        }
+      });
+      std::cout << "Server running; IPC=" << options.ipc << '\n';
+      sof::Frame frame;
+      std::array<float, sof::max_parameters> values {};
+      std::uint64_t last_sequence {}, previous_captured {}, previous_inferred {};
+      auto rate_time = sof::monotonic_ns();
+      auto last_frame_time = rate_time;
+      std::uint64_t publish_time {};
+      while (!interrupted)
+      {
+        if (capture_fault.load(std::memory_order_acquire))
+        {
+          std::lock_guard lock(error_mutex);
+          throw std::runtime_error(capture_error);
+        }
+        if (latest.pop(frame, capture.get_stop_token()))
+        {
+          last_frame_time = sof::monotonic_ns();
+          if (frame.sequence > last_sequence + 1)
+            status.frames_skipped += frame.sequence - last_sequence - 1;
+          last_sequence = frame.sequence;
+          if (!controls.paused)
+          {
+            const auto begin = sof::monotonic_ns();
+            status.parameter_count = inference->run(frame, status.parameters);
+            const auto end = sof::monotonic_ns();
+            ++status.frames_inferred;
+            status.inference_ms = static_cast<float>(end - begin) / 1.0e6F;
+            status.frame_age_ms = static_cast<float>(end - frame.timestamp_ns) / 1.0e6F;
+            if (controls.osc_enabled)
+            {
+              for (std::size_t i = 0; i < status.parameter_count; ++i)
+                values[i] = status.parameters[i].value;
+              if (!osc.send(std::span(values.data(), status.parameter_count)))
+                ++status.osc_failures;
+            }
+          }
+          else
+            ++status.frames_skipped;
+        }
+        const auto now = sof::monotonic_ns();
+        if (now - last_frame_time > 5'000'000'000ULL)
+          throw std::runtime_error("Camera has not delivered a frame for five seconds");
+        status.frames_captured = captured.load(std::memory_order_relaxed);
+        if (now - rate_time >= 1'000'000'000ULL)
+        {
+          const float seconds = static_cast<float>(now - rate_time) / 1.0e9F;
+          status.capture_fps = static_cast<float>(status.frames_captured - previous_captured) / seconds;
+          status.inference_fps =
+            static_cast<float>(status.frames_inferred - previous_inferred) / seconds;
+          previous_captured = status.frames_captured;
+          previous_inferred = status.frames_inferred;
+          rate_time = now;
+        }
+        status.state = controls.paused ? sof::ServerState::paused : sof::ServerState::running;
+        status.osc_enabled = controls.osc_enabled;
+        status.applied_revision = controls.revision;
+        if (now - publish_time >= 33'000'000ULL)
+        {
+          status.heartbeat_ns = now;
+          if (ipc.publish(status, controls))
+            publish_time = now;
+        }
+      }
+      capture.request_stop();
+      capture.join();
+      status.state = sof::ServerState::stopped;
+    }
+    catch (const std::exception& error)
+    {
+      status.state = sof::ServerState::fault;
+      sof::set_text(status.error, error.what());
+      std::cerr << "Server fault: " << error.what() << '\n';
+    }
+    status.heartbeat_ns = sof::monotonic_ns();
+    for (int i = 0; i < 10 && !ipc.publish(status, controls); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    return status.state == sof::ServerState::fault ? 1 : 0;
+  }
+}  // namespace
+
+int main(int argc, char** argv)
+{
+  try
+  {
+    const auto options = parse(argc, argv);
+    if (options.help)
+    {
+      usage();
+      return 0;
+    }
+    std::signal(SIGINT, interrupt);
+    std::signal(SIGTERM, interrupt);
+    return serve(options);
+  }
+  catch (const std::exception& error)
+  {
+    std::cerr << error.what() << '\n';
+    return 1;
+  }
+}
