@@ -4,7 +4,6 @@
 
 #include <memory>
 #include <stop_token>
-#include <string>
 
 namespace sof
 {
@@ -17,9 +16,5 @@ namespace sof
   };
 
   // Construct and destroy on the capture thread (Media Foundation COM affinity).
-  std::unique_ptr<Capture> open_capture(const Config& config);
-#ifdef _WIN32
-  // Includes native formats; does not enable streams or send vendor commands.
-  void list_capture_devices();
-#endif
+  std::unique_ptr<Capture> open_capture();
 }  // namespace sof

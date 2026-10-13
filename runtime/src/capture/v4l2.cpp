@@ -61,11 +61,11 @@ namespace sof
       }
 
     public:
-      explicit V4l2(const Config& config)
+      V4l2()
       {
         try
         {
-          fd_ = open(config.device.data(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
+          fd_ = open("/dev/video0", O_RDWR | O_NONBLOCK | O_CLOEXEC);
           if (fd_ < 0)
             throw std::runtime_error("Cannot open V4L2 device: " + std::string(std::strerror(errno)));
           v4l2_capability caps {};
@@ -76,8 +76,8 @@ namespace sof
             throw std::runtime_error("Camera must support single-plane V4L2 streaming capture");
           v4l2_format format {};
           format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-          format.fmt.pix.width = config.width;
-          format.fmt.pix.height = config.height;
+          format.fmt.pix.width = capture_width;
+          format.fmt.pix.height = capture_height;
           format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
           format.fmt.pix.field = V4L2_FIELD_NONE;
           checked_ioctl(fd_, VIDIOC_S_FMT, &format, "VIDIOC_S_FMT");
@@ -86,13 +86,16 @@ namespace sof
           width_ = format.fmt.pix.width;
           height_ = format.fmt.pix.height;
           stride_ = format.fmt.pix.bytesperline;
-          if (width_ != config.width || height_ != config.height || width_ % 2 || stride_ < width_ * 2)
-            throw std::runtime_error("Camera did not accept the requested dimensions / YUYV stride");
+          if (width_ != capture_width || height_ != capture_height || stride_ < width_ * 2)
+            throw std::runtime_error("VIVE camera did not accept 400x400 YUYV");
           v4l2_streamparm rate {};
           rate.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
           rate.parm.capture.timeperframe.numerator = 1;
-          rate.parm.capture.timeperframe.denominator = config.fps;
+          rate.parm.capture.timeperframe.denominator = capture_fps;
           checked_ioctl(fd_, VIDIOC_S_PARM, &rate, "VIDIOC_S_PARM");
+          const auto& interval = rate.parm.capture.timeperframe;
+          if (!interval.numerator || interval.denominator != capture_fps * interval.numerator)
+            throw std::runtime_error("VIVE camera did not accept 60 fps");
           v4l2_requestbuffers request {};
           request.count = 4;
           request.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -161,7 +164,7 @@ namespace sof
           frame.height = height_;
           frame.timestamp_ns = monotonic_ns();
           frame.sequence = ++sequence_;
-          yuyv_to_rgb(static_cast<const std::uint8_t*>(buffers_[buffer.index].data), stride_, frame);
+          yuyv_luma_to_rgb(static_cast<const std::uint8_t*>(buffers_[buffer.index].data), stride_, frame);
         }
         catch (...)
         {
@@ -174,8 +177,8 @@ namespace sof
     };
   }  // namespace
 
-  std::unique_ptr<Capture> open_capture(const Config& config)
+  std::unique_ptr<Capture> open_capture()
   {
-    return std::make_unique<V4l2>(config);
+    return std::make_unique<V4l2>();
   }
 }  // namespace sof

@@ -14,7 +14,6 @@
 #include <wrl.h>
 
 #include <algorithm>
-#include <charconv>
 #include <condition_variable>
 #include <cwctype>
 #include <iomanip>
@@ -300,7 +299,6 @@ namespace sof
       std::uint64_t sequence_ {};
       std::unique_ptr<WindowsTrackerExtension> tracker_;
       bool tracker_initialized_ {};
-      bool grayscale_ {};
 
       void shutdown() noexcept
       {
@@ -340,7 +338,7 @@ namespace sof
       }
 
     public:
-      explicit MediaFoundation(const Config& config)
+      MediaFoundation()
       {
         try
         {
@@ -356,53 +354,34 @@ namespace sof
           Devices devices;
           check(MFEnumDeviceSources(attributes.Get(), &devices.items, &devices.count),
             "MFEnumDeviceSources");
-          UINT32 index {};
-          const std::string_view device(config.device.data());
-          if (device == "vive")
-          {
-            UINT32 matches {};
-            for (UINT32 i = 0; i < devices.count; ++i)
-              if (is_vive(attribute_string(devices.items[i],
-                    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK)))
-              {
-                index = i;
-                ++matches;
-              }
-            if (matches != 1)
-              throw std::runtime_error("Expected one VIVE Facial Tracker; use --list and --device " "INDEX for multiple trackers");
-          }
-          else
-          {
-            const auto [end, error] =
-              std::from_chars(device.data(), device.data() + device.size(), index);
-            if (error != std::errc {} || end != device.data() + device.size() || index >= devices.count)
-              throw std::runtime_error(
-                "Windows --device must be an available camera index (starting at 0)"
-              );
-          }
+          UINT32 index {}, matches {};
+          for (UINT32 i = 0; i < devices.count; ++i)
+            if (is_vive(attribute_string(devices.items[i],
+                  MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK)))
+            {
+              index = i;
+              ++matches;
+            }
+          if (matches != 1)
+            throw std::runtime_error("Expected exactly one VIVE Facial Tracker (USB 0BB4:0321)");
           const auto path = attribute_string(devices.items[index],
             MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK);
-          grayscale_ = is_vive(path);
-          std::wcout << L"Opening camera " << index << L": "
+          std::wcout << L"Opening "
                      << attribute_string(devices.items[index], MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME)
-                     << L'\n';
+                     << L" (USB 0BB4:0321)\n";
           check(devices.items[index]->ActivateObject(IID_PPV_ARGS(&source_)), "Activate camera");
-          if (grayscale_)
-          {
-            tracker_ = std::make_unique<WindowsTrackerExtension>(source_.Get(), path);
-            tracker_initialized_ = true;
-            enable_vive_tracker(*tracker_);
-            std::cout << "VIVE sensor registers configured; stream enabled\n";
-          }
+          tracker_ = std::make_unique<WindowsTrackerExtension>(source_.Get(), path);
+          tracker_initialized_ = true;
+          enable_vive_tracker(*tracker_);
+          std::cout << "VIVE sensor registers configured; stream enabled\n";
           callback_ = Microsoft::WRL::Make<ReaderCallback>();
           callback_->state = state_;
           ComPtr<IMFAttributes> reader_attributes;
           check(MFCreateAttributes(&reader_attributes, 2), "MFCreateAttributes");
           check(reader_attributes->SetUnknown(MF_SOURCE_READER_ASYNC_CALLBACK, callback_.Get()),
             "Set callback");
-          check(reader_attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,
-                  grayscale_ ? FALSE : TRUE),
-            "Enable RGB conversion");
+          check(reader_attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, FALSE),
+            "Disable video conversion");
           check(reader_attributes->SetUINT32(MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN, TRUE),
             "Keep media source alive for explicit shutdown");
           check(MFCreateSourceReaderFromMediaSource(source_.Get(), reader_attributes.Get(), &reader_),
@@ -423,7 +402,7 @@ namespace sof
               continue;
             if (FAILED(MFGetAttributeSize(native.Get(), MF_MT_FRAME_SIZE, &width, &height)) || FAILED(MFGetAttributeRatio(native.Get(), MF_MT_FRAME_RATE, &numerator, &denominator)))
               continue;
-            if (width == config.width && height == config.height && denominator != 0 && numerator == static_cast<std::uint64_t>(config.fps) * denominator && (!grayscale_ || subtype == MFVideoFormat_YUY2))
+            if (width == capture_width && height == capture_height && denominator != 0 && numerator == static_cast<std::uint64_t>(capture_fps) * denominator && subtype == MFVideoFormat_YUY2)
             {
               check(reader_->SetCurrentMediaType(video_stream, nullptr, native.Get()),
                 "Set native capture mode");
@@ -432,25 +411,22 @@ namespace sof
             }
           }
           if (!matched)
-            throw std::runtime_error("Camera does not offer the requested width, height and fps");
+            throw std::runtime_error("VIVE camera does not offer 400x400 YUY2 at 60 fps");
           ComPtr<IMFMediaType> rgb;
           check(MFCreateMediaType(&rgb), "MFCreateMediaType");
           check(rgb->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "Set video type");
-          check(rgb->SetGUID(MF_MT_SUBTYPE, grayscale_ ? MFVideoFormat_YUY2 : MFVideoFormat_RGB32),
-            "Set output pixel format");
-          check(reader_->SetCurrentMediaType(video_stream, nullptr, rgb.Get()), "Set RGB32 output");
+          check(rgb->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_YUY2), "Set output pixel format");
+          check(reader_->SetCurrentMediaType(video_stream, nullptr, rgb.Get()), "Set YUY2 output");
           ComPtr<IMFMediaType> actual;
           check(reader_->GetCurrentMediaType(video_stream, &actual), "Get output type");
           check(MFGetAttributeSize(actual.Get(), MF_MT_FRAME_SIZE, &width_, &height_), "Get dimensions");
-          if (width_ != config.width || height_ != config.height)
+          if (width_ != capture_width || height_ != capture_height)
             throw std::runtime_error("Unexpected Media Foundation output dimensions");
           UINT32 stride {};
           if (SUCCEEDED(actual->GetUINT32(MF_MT_DEFAULT_STRIDE, &stride)))
             stride_ = static_cast<LONG>(stride);
           else
-            check(MFGetStrideForBitmapInfoHeader(grayscale_ ? MFVideoFormat_YUY2.Data1
-                                                            : MFVideoFormat_RGB32.Data1,
-                    width_, &stride_),
+            check(MFGetStrideForBitmapInfoHeader(MFVideoFormat_YUY2.Data1, width_, &stride_),
               "Get stride");
         }
         catch (...)
@@ -512,36 +488,23 @@ namespace sof
           check(buffer->Lock(&data, nullptr, &length), "Lock buffer");
           const auto row_size =
             static_cast<std::size_t>(pitch < 0 ? -static_cast<std::int64_t>(pitch) : pitch);
-          if (row_size < width_ * (grayscale_ ? 2 : 4) || length < row_size * height_)
+          if (row_size < width_ * 2 || length < row_size * height_)
           {
             buffer->Unlock();
-            throw std::runtime_error("Incomplete RGB32 frame");
+            throw std::runtime_error("Incomplete VIVE YUY2 frame");
           }
           if (pitch < 0)
             data += (height_ - 1) * row_size;
         }
-        if (static_cast<std::int64_t>(pitch < 0 ? -static_cast<std::int64_t>(pitch) : pitch) < width_ * (grayscale_ ? 2 : 4))
+        if (static_cast<std::int64_t>(pitch < 0 ? -static_cast<std::int64_t>(pitch) : pitch) < width_ * 2)
         {
           if (is_2d)
             planar->Unlock2D();
           else
             buffer->Unlock();
-          throw std::runtime_error("Invalid RGB32 stride");
+          throw std::runtime_error("Invalid VIVE YUY2 stride");
         }
-        if (grayscale_)
-          yuyv_luma_to_rgb(data, pitch, frame);
-        else
-          for (UINT32 y = 0; y < height_; ++y)
-          {
-            const BYTE* row = data + static_cast<std::ptrdiff_t>(y) * pitch;
-            auto* dest = frame.rgb.data() + static_cast<std::size_t>(y) * width_ * 3;
-            for (UINT32 x = 0; x < width_; ++x)
-            {
-              dest[x * 3] = row[x * 4 + 2];
-              dest[x * 3 + 1] = row[x * 4 + 1];
-              dest[x * 3 + 2] = row[x * 4];
-            }
-          }
+        yuyv_luma_to_rgb(data, pitch, frame);
         if (is_2d)
           check(planar->Unlock2D(), "Unlock2D");
         else
@@ -551,68 +514,8 @@ namespace sof
     };
   }  // namespace
 
-  std::unique_ptr<Capture> open_capture(const Config& config)
+  std::unique_ptr<Capture> open_capture()
   {
-    return std::make_unique<MediaFoundation>(config);
-  }
-
-  void list_capture_devices()
-  {
-    check(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "CoInitializeEx");
-
-    struct Cleanup
-    {
-      ~Cleanup()
-      {
-        MFShutdown();
-        CoUninitialize();
-      }
-    } cleanup;
-
-    check(MFStartup(MF_VERSION), "MFStartup");
-    ComPtr<IMFAttributes> attributes;
-    check(MFCreateAttributes(&attributes, 1), "Create capture attributes");
-    check(attributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-            MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID),
-      "Set capture source type");
-    Devices devices;
-    check(MFEnumDeviceSources(attributes.Get(), &devices.items, &devices.count), "List capture devices");
-    for (UINT32 i = 0; i < devices.count; ++i)
-    {
-      const auto path =
-        attribute_string(devices.items[i], MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK);
-      std::wcout << i << L": " << attribute_string(devices.items[i], MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME)
-                 << (is_vive(path) ? L" [VIVE Facial Tracker]" : L"") << L'\n';
-      ComPtr<IMFMediaSource> source;
-      const auto activated = devices.items[i]->ActivateObject(IID_PPV_ARGS(&source));
-      if (FAILED(activated))
-      {
-        std::cout << "  Camera unavailable: 0x" << std::hex << activated << std::dec << '\n';
-        continue;
-      }
-      ComPtr<IMFSourceReader> reader;
-      const auto created = MFCreateSourceReaderFromMediaSource(source.Get(), nullptr, &reader);
-      if (SUCCEEDED(created))
-      {
-        for (DWORD mode = 0;; ++mode)
-        {
-          ComPtr<IMFMediaType> type;
-          if (reader->GetNativeMediaType(video_stream, mode, &type) != S_OK)
-            break;
-          UINT32 width {}, height {}, numerator {}, denominator {};
-          GUID subtype {};
-          MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &width, &height);
-          MFGetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, &numerator, &denominator);
-          type->GetGUID(MF_MT_SUBTYPE, &subtype);
-          char fourcc[5] {};
-          for (int c = 0; c < 4; ++c)
-            fourcc[c] = static_cast<char>((subtype.Data1 >> (c * 8)) & 0xff);
-          std::cout << "  " << width << 'x' << height << " @ " << numerator << '/' << denominator
-                    << " fps, " << fourcc << '\n';
-        }
-      }
-      reader.Reset();
-      source->Shutdown();
-    }
+    return std::make_unique<MediaFoundation>();
   }
 }  // namespace sof

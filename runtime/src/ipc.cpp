@@ -227,17 +227,15 @@ namespace sof
 
   bool SharedMemory::publish_frame(const Frame& frame)
   {
-    if (!frame.width || !frame.height || frame.width > preview_width || frame.height > preview_height || frame.rgb.size() != static_cast<std::size_t>(frame.width) * frame.height * 3)
-      throw std::runtime_error("Invalid or oversized preview frame");
+    if (frame.width != capture_width || frame.height != capture_height || frame.rgb.size() != static_cast<std::size_t>(capture_width) * capture_height * 3)
+      throw std::runtime_error("Preview is not a 400x400 RGB VIVE frame");
     if (!impl_->lock())
       return false;
     Impl::Guard guard { *impl_ };
     impl_->validate();
     auto& preview = impl_->block->preview;
-    preview.width = frame.width;
-    preview.height = frame.height;
     preview.timestamp_ns = frame.timestamp_ns;
-    std::memcpy(preview.rgb.data(), frame.rgb.data(), frame.rgb.size());
+    std::memcpy(preview.rgb.data(), frame.rgb.data(), preview.rgb.size());
     preview.sequence = frame.sequence;
     return true;
   }
@@ -251,13 +249,11 @@ namespace sof
     const auto& preview = impl_->block->preview;
     if (!preview.sequence || preview.sequence == frame.sequence)
       return false;
-    if (!preview.width || !preview.height || preview.width > preview_width || preview.height > preview_height)
-      throw std::runtime_error("Invalid shared preview dimensions");
-    frame.width = preview.width;
-    frame.height = preview.height;
+    frame.width = capture_width;
+    frame.height = capture_height;
     frame.timestamp_ns = preview.timestamp_ns;
-    frame.rgb.resize(static_cast<std::size_t>(frame.width) * frame.height * 3);
-    std::memcpy(frame.rgb.data(), preview.rgb.data(), frame.rgb.size());
+    frame.rgb.resize(preview.rgb.size());
+    std::memcpy(frame.rgb.data(), preview.rgb.data(), preview.rgb.size());
     frame.sequence = preview.sequence;
     return true;
   }

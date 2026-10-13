@@ -59,14 +59,8 @@ namespace
   Options parse(int argc, char** argv)
   {
     Options options;
-#ifdef _WIN32
-    sof::set_text(options.config.device, "0");
-#else
-    sof::set_text(options.config.device, "/dev/video0");
-#endif
     sof::set_text(options.config.osc_host, "127.0.0.1");
     sof::set_text(options.config.osc_address, "/sranipal/parameters");
-    bool width_set {}, height_set {}, fps_set {};
     for (int i = 1; i < argc; ++i)
     {
       const std::string_view key(argv[i]);
@@ -85,29 +79,12 @@ namespace
       const std::string_view value(argv[i]);
       if (key == "--model")
         argument_text(options.config.model, value);
-      else if (key == "--device")
-        argument_text(options.config.device, value);
       else if (key == "--ipc")
         options.ipc = value;
       else if (key == "--input")
         options.input = value;
       else if (key == "--output")
         options.output = value;
-      else if (key == "--width")
-      {
-        options.config.width = number(value, 2, 8192);
-        width_set = true;
-      }
-      else if (key == "--height")
-      {
-        options.config.height = number(value, 1, 8192);
-        height_set = true;
-      }
-      else if (key == "--fps")
-      {
-        options.config.fps = number(value, 1, 240);
-        fps_set = true;
-      }
       else if (key == "--seconds")
         options.seconds = number(value, 1, 86400);
       else if (key == "--threads")
@@ -125,15 +102,6 @@ namespace
       else
         throw std::runtime_error("Unknown option: " + std::string(key));
     }
-    if (std::string_view(options.config.device.data()) == "vive")
-    {
-      if (!width_set)
-        options.config.width = 400;
-      if (!height_set)
-        options.config.height = 400;
-      if (!fps_set)
-        options.config.fps = 60;
-    }
     if (options.capture_only && options.config.model[0])
       throw std::runtime_error("Use either --capture-only or --model");
     if (!options.help && !options.capture_only && options.config.model[0] == '\0')
@@ -143,7 +111,7 @@ namespace
 
   void usage()
   {
-    std::cout << "sof-server (--model model.mnn | --capture-only) [options]\n" "  --capture-only    Capture and preview without inference or OSC\n" "  --seconds N       Stop after N seconds (optional)\n" "  --device ID       vive or camera index on Windows; /dev/videoN on Linux\n" "  --width N --height N --fps N  Requested capture mode (640x480 @ 30 by default)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --input NAME --output NAME   Select model tensors\n" "  --mean F --scale F RGB normalization: (pixel - mean) * scale (0, 1/255)\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
+    std::cout << "sof-server (--model model.mnn | --capture-only) [options]\n" "  --capture-only    Capture and preview without inference or OSC\n" "  --seconds N       Stop after N seconds (optional)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --input NAME --output NAME   Select model tensors\n" "  --mean F --scale F RGB normalization: (pixel - mean) * scale (0, 1/255)\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
   }
 
   int serve(const Options& options)
@@ -176,7 +144,7 @@ namespace
       std::jthread capture([&](std::stop_token stop) {
         try
         {
-          auto camera = sof::open_capture(options.config);
+          auto camera = sof::open_capture();
           sof::Frame frame;
           while (!stop.stop_requested())
           {
@@ -198,7 +166,6 @@ namespace
       });
       std::cout << "Server running; IPC=" << options.ipc << '\n';
       sof::Frame frame;
-      sof::Frame preview;
       std::array<float, sof::max_parameters> values {};
       std::uint64_t last_sequence {}, previous_captured {}, previous_inferred {};
       auto rate_time = sof::monotonic_ns();
@@ -225,13 +192,7 @@ namespace
             const auto begin = sof::monotonic_ns();
             if (begin - preview_time >= 33'000'000ULL)
             {
-              const sof::Frame* image = &frame;
-              if (frame.width > sof::preview_width || frame.height > sof::preview_height)
-              {
-                sof::resize_preview(frame, preview, sof::preview_width, sof::preview_height);
-                image = &preview;
-              }
-              if (ipc.publish_frame(*image))
+              if (ipc.publish_frame(frame))
                 preview_time = begin;
             }
             if (inference)

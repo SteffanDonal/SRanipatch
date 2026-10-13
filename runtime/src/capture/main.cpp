@@ -41,14 +41,6 @@ int main(int argc, char** argv)
   std::cerr << std::unitbuf;
   try
   {
-    sof::Config config;
-    config.width = config.height = 400;
-    config.fps = 60;
-#ifdef _WIN32
-    sof::set_text(config.device, "vive");
-#else
-    sof::set_text(config.device, "/dev/video0");
-#endif
     std::uint32_t frames = 120;
     std::filesystem::path output;
     std::string ipc_name;
@@ -57,35 +49,16 @@ int main(int argc, char** argv)
       const std::string_view key(argv[i]);
       if (key == "--help")
       {
-        std::cout << "sof-capture [--list] [--device vive|INDEX | --ipc NAME] [--frames N] [--output " "frame.ppm]\n" "  --width N --height N --fps N (default 400x400 @ 60)\n";
+        std::cout << "sof-capture [--ipc NAME] [--frames N] [--output frame.ppm]\n";
         return 0;
       }
-#ifdef _WIN32
-      if (key == "--list")
-      {
-        sof::list_capture_devices();
-        return 0;
-      }
-#endif
       if (++i == argc)
         throw std::runtime_error("Missing capture option value");
       const std::string_view value(argv[i]);
-      if (key == "--device")
-      {
-        if (value.empty() || value.size() >= config.device.size())
-          throw std::runtime_error("Invalid device name");
-        sof::set_text(config.device, value);
-      }
-      else if (key == "--frames")
+      if (key == "--frames")
         frames = integer(value);
       else if (key == "--ipc")
         ipc_name = value;
-      else if (key == "--width")
-        config.width = integer(value);
-      else if (key == "--height")
-        config.height = integer(value);
-      else if (key == "--fps")
-        config.fps = integer(value);
       else if (key == "--output")
         output = value;
       else
@@ -94,7 +67,7 @@ int main(int argc, char** argv)
     std::unique_ptr<sof::Capture> capture;
     std::unique_ptr<sof::SharedMemory> ipc;
     if (ipc_name.empty())
-      capture = sof::open_capture(config);
+      capture = sof::open_capture();
     else
       ipc = std::make_unique<sof::SharedMemory>(ipc_name, sof::SharedMemory::Role::client);
     sof::Frame frame;

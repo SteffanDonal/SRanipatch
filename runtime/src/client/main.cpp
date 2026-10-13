@@ -235,12 +235,12 @@ namespace
         ImGui::SeparatorText("Configuration");
         ImGui::TextWrapped("Model: %s",
           status.inference_enabled ? status.config.model.data() : "Capture only");
-        ImGui::Text("Device: %s    %ux%u @ %u fps    MNN threads: %u", status.config.device.data(),
-          status.config.width, status.config.height, status.config.fps, status.config.threads);
+        ImGui::Text("VIVE Facial Tracker: %ux%u @ %u fps    MNN threads: %u", sof::capture_width,
+          sof::capture_height, sof::capture_fps, status.config.threads);
         ImGui::TextWrapped("OSC: %s:%u %s", status.config.osc_host.data(), status.config.osc_port,
           status.config.osc_address.data());
         ImGui::Text("RGB normalization: (pixel - %.3f) * %.6f", status.config.mean, status.config.scale);
-        ImGui::TextUnformatted("Capture/model settings are supplied to the server at startup.");
+        ImGui::TextUnformatted("Model settings are supplied to the server at startup.");
         ImGui::EndTable();
       }
       ImGui::SeparatorText("Parameters");

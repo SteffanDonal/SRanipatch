@@ -123,20 +123,13 @@ namespace
     sof::Frame frame;
     frame.width = 2;
     frame.height = 2;
-    // Row padding must be skipped. Limited-range black / white, neutral chroma.
+    // Row padding must be skipped and VIVE chroma bytes ignored.
     const std::array<std::uint8_t, 12> source { 16, 128, 235, 128, 99, 99, 235, 128, 16, 128, 99, 99 };
-    sof::yuyv_to_rgb(source.data(), 6, frame);
-    require(frame.rgb == std::vector<std::uint8_t> { 0, 0, 0, 255, 255, 255, 255, 255, 255, 0, 0, 0 },
-      "YUYV conversion or padded row handling is wrong");
     sof::yuyv_luma_to_rgb(source.data(), 6, frame);
     require(frame.rgb == std::vector<std::uint8_t> { 16, 16, 16, 235, 235, 235, 235, 235, 235, 16, 16, 16 },
       "VIVE luminance decoding must ignore chroma and preserve raw luminance");
     sof::yuyv_luma_to_rgb(source.data() + 6, -6, frame);
     require(frame.rgb[0] == 235 && frame.rgb[6] == 16, "Negative luminance row stride is wrong");
-    sof::Frame small;
-    sof::resize_preview(frame, small, 1, 1);
-    require(small.width == 1 && small.height == 1 && small.rgb.size() == 3 && small.rgb[0] == 235,
-      "Preview resize did not preserve the sampled pixel");
     sof::LatestFrame latest;
     frame.sequence = 1;
     latest.push(frame);
@@ -171,9 +164,10 @@ namespace
     require(server->publish(status, controls) && controls.revision == revision && controls.paused == 1 && controls.osc_enabled == 0,
       "Server did not receive controls");
     sof::Frame image;
-    image.width = image.height = 2;
+    image.width = sof::capture_width;
+    image.height = sof::capture_height;
     image.sequence = 10;
-    image.rgb.assign(12, 123);
+    image.rgb.assign(static_cast<std::size_t>(image.width) * image.height * 3, 123);
     require(server->publish_frame(image), "Preview publication failed");
     sof::Frame received_frame;
     require(client.read_frame(received_frame) && received_frame.rgb == image.rgb && received_frame.sequence == 10,

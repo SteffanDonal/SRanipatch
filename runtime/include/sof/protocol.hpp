@@ -10,10 +10,11 @@
 namespace sof
 {
   inline constexpr std::uint32_t protocol_magic = 0x534F4631;
-  inline constexpr std::uint32_t protocol_version = 2;
+  inline constexpr std::uint32_t protocol_version = 3;
   inline constexpr std::size_t max_parameters = 128;
-  inline constexpr std::uint32_t preview_width = 640;
-  inline constexpr std::uint32_t preview_height = 480;
+  inline constexpr std::uint32_t capture_width = 400;
+  inline constexpr std::uint32_t capture_height = 400;
+  inline constexpr std::uint32_t capture_fps = 60;
 
   inline std::uint64_t monotonic_ns()
   {
@@ -48,12 +49,8 @@ namespace sof
   struct Config
   {
     std::array<char, 256> model {};
-    std::array<char, 128> device {};
     std::array<char, 64> osc_host {};
     std::array<char, 128> osc_address {};
-    std::uint32_t width { 640 };
-    std::uint32_t height { 480 };
-    std::uint32_t fps { 30 };
     std::uint32_t threads { 2 };
     std::uint32_t osc_port { 9000 };
     float mean { 0.0F };
@@ -93,9 +90,7 @@ namespace sof
   {
     std::uint64_t sequence {};
     std::uint64_t timestamp_ns {};
-    std::uint32_t width {};
-    std::uint32_t height {};
-    std::array<std::uint8_t, preview_width * preview_height * 3> rgb {};
+    std::array<std::uint8_t, capture_width * capture_height * 3> rgb {};
   };
 
   struct SharedBlock
@@ -112,10 +107,10 @@ namespace sof
   static_assert(std::is_trivially_copyable_v<SharedBlock>);
   static_assert(std::is_standard_layout_v<SharedBlock>);
   static_assert(sizeof(Parameter) == 52);
-  static_assert(sizeof(Config) == 604);
-  static_assert(sizeof(Status) == 7608);
-  static_assert(sizeof(SharedBlock) == 929264);
+  static_assert(sizeof(Config) == 464);
+  static_assert(sizeof(Status) == 7464);
+  static_assert(sizeof(SharedBlock) == 487512);
   static_assert(offsetof(SharedBlock, status) == 16);
-  static_assert(offsetof(SharedBlock, controls) == 7624);
-  static_assert(offsetof(SharedBlock, preview) == 7640);
+  static_assert(offsetof(SharedBlock, controls) == 7480);
+  static_assert(offsetof(SharedBlock, preview) == 7496);
 }  // namespace sof
