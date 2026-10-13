@@ -26,6 +26,8 @@ namespace
     sof::Config config;
     std::string ipc { "sranipal" }, input, output;
     bool help {};
+    bool capture_only {};
+    std::uint32_t seconds {};
   };
 
   template <std::size_t N>
@@ -64,12 +66,18 @@ namespace
 #endif
     sof::set_text(options.config.osc_host, "127.0.0.1");
     sof::set_text(options.config.osc_address, "/sranipal/parameters");
+    bool width_set {}, height_set {}, fps_set {};
     for (int i = 1; i < argc; ++i)
     {
       const std::string_view key(argv[i]);
       if (key == "--help" || key == "-h")
       {
         options.help = true;
+        continue;
+      }
+      if (key == "--capture-only")
+      {
+        options.capture_only = true;
         continue;
       }
       if (++i >= argc)
@@ -86,11 +94,22 @@ namespace
       else if (key == "--output")
         options.output = value;
       else if (key == "--width")
+      {
         options.config.width = number(value, 2, 8192);
+        width_set = true;
+      }
       else if (key == "--height")
+      {
         options.config.height = number(value, 1, 8192);
+        height_set = true;
+      }
       else if (key == "--fps")
+      {
         options.config.fps = number(value, 1, 240);
+        fps_set = true;
+      }
+      else if (key == "--seconds")
+        options.seconds = number(value, 1, 86400);
       else if (key == "--threads")
         options.config.threads = number(value, 1, 64);
       else if (key == "--osc-host")
@@ -106,14 +125,25 @@ namespace
       else
         throw std::runtime_error("Unknown option: " + std::string(key));
     }
-    if (!options.help && options.config.model[0] == '\0')
+    if (std::string_view(options.config.device.data()) == "vive")
+    {
+      if (!width_set)
+        options.config.width = 400;
+      if (!height_set)
+        options.config.height = 400;
+      if (!fps_set)
+        options.config.fps = 60;
+    }
+    if (options.capture_only && options.config.model[0])
+      throw std::runtime_error("Use either --capture-only or --model");
+    if (!options.help && !options.capture_only && options.config.model[0] == '\0')
       throw std::runtime_error("--model path/to/model.mnn is required; see --help");
     return options;
   }
 
   void usage()
   {
-    std::cout << "sof-server --model model.mnn [options]\n" "  --device ID       Camera index on Windows; /dev/videoN on Linux\n" "  --width N --height N --fps N  Requested capture mode (640x480 @ 30 by default)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --input NAME --output NAME   Select model tensors\n" "  --mean F --scale F RGB normalization: (pixel - mean) * scale (0, 1/255)\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
+    std::cout << "sof-server (--model model.mnn | --capture-only) [options]\n" "  --capture-only    Capture and preview without inference or OSC\n" "  --seconds N       Stop after N seconds (optional)\n" "  --device ID       vive or camera index on Windows; /dev/videoN on Linux\n" "  --width N --height N --fps N  Requested capture mode (640x480 @ 30 by default)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --input NAME --output NAME   Select model tensors\n" "  --mean F --scale F RGB normalization: (pixel - mean) * scale (0, 1/255)\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
   }
 
   int serve(const Options& options)
@@ -122,15 +152,22 @@ namespace
     sof::Status status;
     sof::Controls controls;
     status.config = options.config;
+    status.inference_enabled = options.capture_only ? 0U : 1U;
+    status.osc_enabled = options.capture_only ? 0U : 1U;
     status.session_id = sof::monotonic_ns();
     status.heartbeat_ns = status.session_id;
     ipc.publish(status, controls);
     try
     {
-      auto inference = sof::open_mnn(options.config, options.input, options.output);
-      sof::OscSender osc(options.config.osc_host.data(),
-        static_cast<std::uint16_t>(options.config.osc_port),
-        options.config.osc_address.data());
+      std::unique_ptr<sof::Inference> inference;
+      std::unique_ptr<sof::OscSender> osc;
+      if (!options.capture_only)
+      {
+        inference = sof::open_mnn(options.config, options.input, options.output);
+        osc = std::make_unique<sof::OscSender>(options.config.osc_host.data(),
+          static_cast<std::uint16_t>(options.config.osc_port),
+          options.config.osc_address.data());
+      }
       sof::LatestFrame latest;
       std::atomic<std::uint64_t> captured {};
       std::atomic<bool> capture_fault {};
@@ -161,12 +198,16 @@ namespace
       });
       std::cout << "Server running; IPC=" << options.ipc << '\n';
       sof::Frame frame;
+      sof::Frame preview;
       std::array<float, sof::max_parameters> values {};
       std::uint64_t last_sequence {}, previous_captured {}, previous_inferred {};
       auto rate_time = sof::monotonic_ns();
       auto last_frame_time = rate_time;
       std::uint64_t publish_time {};
-      while (!interrupted)
+      std::uint64_t preview_time {};
+      const auto stop_at =
+        options.seconds ? rate_time + static_cast<std::uint64_t>(options.seconds) * 1'000'000'000ULL : 0;
+      while (!interrupted && (!stop_at || sof::monotonic_ns() < stop_at))
       {
         if (capture_fault.load(std::memory_order_acquire))
         {
@@ -182,18 +223,36 @@ namespace
           if (!controls.paused)
           {
             const auto begin = sof::monotonic_ns();
-            status.parameter_count = inference->run(frame, status.parameters);
-            const auto end = sof::monotonic_ns();
-            ++status.frames_inferred;
-            status.inference_ms = static_cast<float>(end - begin) / 1.0e6F;
-            status.frame_age_ms = static_cast<float>(end - frame.timestamp_ns) / 1.0e6F;
-            if (controls.osc_enabled)
+            if (begin - preview_time >= 33'000'000ULL)
             {
-              for (std::size_t i = 0; i < status.parameter_count; ++i)
-                values[i] = status.parameters[i].value;
-              if (!osc.send(std::span(values.data(), status.parameter_count)))
-                ++status.osc_failures;
+              const sof::Frame* image = &frame;
+              if (frame.width > sof::preview_width || frame.height > sof::preview_height)
+              {
+                sof::resize_preview(frame, preview, sof::preview_width, sof::preview_height);
+                image = &preview;
+              }
+              if (ipc.publish_frame(*image))
+                preview_time = begin;
             }
+            if (inference)
+            {
+              const auto inference_begin = sof::monotonic_ns();
+              status.parameter_count = inference->run(frame, status.parameters);
+              const auto end = sof::monotonic_ns();
+              ++status.frames_inferred;
+              status.inference_ms = static_cast<float>(end - inference_begin) / 1.0e6F;
+              status.frame_age_ms = static_cast<float>(end - frame.timestamp_ns) / 1.0e6F;
+              if (controls.osc_enabled)
+              {
+                for (std::size_t i = 0; i < status.parameter_count; ++i)
+                  values[i] = status.parameters[i].value;
+                if (!osc->send(std::span(values.data(), status.parameter_count)))
+                  ++status.osc_failures;
+              }
+            }
+            else
+              status.frame_age_ms =
+                static_cast<float>(sof::monotonic_ns() - frame.timestamp_ns) / 1.0e6F;
           }
           else
             ++status.frames_skipped;
@@ -211,9 +270,11 @@ namespace
           previous_captured = status.frames_captured;
           previous_inferred = status.frames_inferred;
           rate_time = now;
+          std::cout << "Capture: " << status.capture_fps << " fps, " << status.frames_captured
+                    << " frames\n";
         }
         status.state = controls.paused ? sof::ServerState::paused : sof::ServerState::running;
-        status.osc_enabled = controls.osc_enabled;
+        status.osc_enabled = inference ? controls.osc_enabled : 0U;
         status.applied_revision = controls.revision;
         if (now - publish_time >= 33'000'000ULL)
         {
@@ -241,6 +302,7 @@ namespace
 
 int main(int argc, char** argv)
 {
+  std::cout << std::unitbuf;
   try
   {
     const auto options = parse(argc, argv);

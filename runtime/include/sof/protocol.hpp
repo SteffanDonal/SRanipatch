@@ -10,8 +10,10 @@
 namespace sof
 {
   inline constexpr std::uint32_t protocol_magic = 0x534F4631;
-  inline constexpr std::uint32_t protocol_version = 1;
+  inline constexpr std::uint32_t protocol_version = 2;
   inline constexpr std::size_t max_parameters = 128;
+  inline constexpr std::uint32_t preview_width = 640;
+  inline constexpr std::uint32_t preview_height = 480;
 
   inline std::uint64_t monotonic_ns()
   {
@@ -74,7 +76,7 @@ namespace sof
     float inference_ms {};
     float frame_age_ms {};
     std::uint32_t osc_enabled { 1 };
-    std::uint32_t reserved {};
+    std::uint32_t inference_enabled { 1 };
     Config config {};
     std::array<Parameter, max_parameters> parameters {};
     std::array<char, 256> error {};
@@ -87,6 +89,15 @@ namespace sof
     std::uint32_t osc_enabled { 1 };
   };
 
+  struct Preview
+  {
+    std::uint64_t sequence {};
+    std::uint64_t timestamp_ns {};
+    std::uint32_t width {};
+    std::uint32_t height {};
+    std::array<std::uint8_t, preview_width * preview_height * 3> rgb {};
+  };
+
   struct SharedBlock
   {
     std::uint32_t magic { protocol_magic };
@@ -95,6 +106,7 @@ namespace sof
     std::uint32_t reserved {};
     Status status {};
     Controls controls {};
+    Preview preview {};
   };
 
   static_assert(std::is_trivially_copyable_v<SharedBlock>);
@@ -102,8 +114,8 @@ namespace sof
   static_assert(sizeof(Parameter) == 52);
   static_assert(sizeof(Config) == 604);
   static_assert(sizeof(Status) == 7608);
-  static_assert(sizeof(SharedBlock) == 7640);
+  static_assert(sizeof(SharedBlock) == 929264);
   static_assert(offsetof(SharedBlock, status) == 16);
   static_assert(offsetof(SharedBlock, controls) == 7624);
-  static_assert(sizeof(SharedBlock) < 16 * 1024);
+  static_assert(offsetof(SharedBlock, preview) == 7640);
 }  // namespace sof

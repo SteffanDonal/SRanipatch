@@ -5,6 +5,7 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <iostream>
@@ -86,6 +87,18 @@ namespace
     std::array<float, 120> rates {};
     std::size_t graph_index {};
     std::uint64_t graph_at {};
+    sof::Frame preview;
+    GLuint preview_texture {};
+    glGenTextures(1, &preview_texture);
+    glBindTexture(GL_TEXTURE_2D, preview_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Windows' OpenGL 1.1 headers omit this OpenGL 3.3 constant.
+    constexpr GLint clamp_to_edge = 0x812F;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp_to_edge);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp_to_edge);
+    std::uint32_t texture_width {}, texture_height {};
+    int camera_view {};
     while (!glfwWindowShouldClose(window))
     {
       glfwWaitEventsTimeout(1.0 / 30.0);
@@ -115,6 +128,7 @@ namespace
             session = status.session_id;
             request_pending = false;
             requested_revision = 0;
+            preview = {};
           }
           if (!request_pending && controls.revision <= status.applied_revision)
           {
@@ -123,6 +137,23 @@ namespace
           }
           if (request_pending && requested_revision != 0 && status.applied_revision >= requested_revision)
             request_pending = false;
+          if (ipc->read_frame(preview))
+          {
+            glBindTexture(GL_TEXTURE_2D, preview_texture);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            if (texture_width != preview.width || texture_height != preview.height)
+            {
+              texture_width = preview.width;
+              texture_height = preview.height;
+              glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(preview.width),
+                static_cast<GLsizei>(preview.height), 0, GL_RGB, GL_UNSIGNED_BYTE,
+                preview.rgb.data());
+            }
+            else
+              glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(preview.width),
+                static_cast<GLsizei>(preview.height), GL_RGB, GL_UNSIGNED_BYTE,
+                preview.rgb.data());
+          }
           // Windows mappings disappear when all handles close; reopen after a server exits.
           if (!fresh || status.state == sof::ServerState::fault || status.state == sof::ServerState::stopped)
           {
@@ -155,38 +186,63 @@ namespace
         ImGui::TextWrapped("%s", connection_message.c_str());
       if (status.error[0])
         ImGui::TextWrapped("%s", status.error.data());
-      ImGui::SeparatorText("Performance");
-      ImGui::Text("Capture: %.1f fps    Inference: %.1f fps", status.capture_fps, status.inference_fps);
-      ImGui::Text("Inference: %.2f ms    Frame age: %.2f ms", status.inference_ms, status.frame_age_ms);
-      ImGui::Text("Captured: %llu    Inferred: %llu    Skipped: %llu    OSC failures: %llu",
-        static_cast<unsigned long long>(status.frames_captured),
-        static_cast<unsigned long long>(status.frames_inferred),
-        static_cast<unsigned long long>(status.frames_skipped),
-        static_cast<unsigned long long>(status.osc_failures));
-      ImGui::PlotLines("Inference FPS", rates.data(), static_cast<int>(rates.size()),
-        static_cast<int>(graph_index), nullptr, 0.0F, 120.0F, ImVec2(0, 80));
-      ImGui::SeparatorText("Controls");
-      ImGui::BeginDisabled(!ipc || !fresh);
-      bool changed = ImGui::Checkbox("Pause inference", &paused);
-      changed |= ImGui::Checkbox("Send OSC", &osc_enabled);
-      if (changed)
-        request_pending = true;
-      if (ipc && fresh && request_pending && (changed || requested_revision == 0))
+      if (ImGui::BeginTable("dashboard", 2, ImGuiTableFlags_Resizable))
       {
-        if (!ipc->control(paused, osc_enabled, requested_revision))
-          requested_revision = 0;
+        ImGui::TableNextColumn();
+        ImGui::SeparatorText("Camera preview");
+        ImGui::Combo("View", &camera_view, "Stereo (packed)\0Left camera\0Right camera\0");
+        if (!preview.rgb.empty())
+        {
+          const float side = std::min(400.0F, ImGui::GetContentRegionAvail().x);
+          const float left = camera_view == 2 ? 0.5F : 0.0F;
+          const float right = camera_view == 1 ? 0.5F : 1.0F;
+          const float height =
+            side * static_cast<float>(preview.height) / static_cast<float>(preview.width);
+          ImGui::Image(static_cast<ImTextureID>(preview_texture), ImVec2(side, height), ImVec2(left, 0),
+            ImVec2(right, 1));
+          ImGui::Text("Frame %llu", static_cast<unsigned long long>(preview.sequence));
+        }
+        else
+          ImGui::TextUnformatted("Waiting for camera frames...");
+        ImGui::TableNextColumn();
+        ImGui::SeparatorText("Performance");
+        ImGui::Text("Capture: %.1f fps    Inference: %.1f fps", status.capture_fps, status.inference_fps);
+        ImGui::Text("Inference: %.2f ms    Frame age: %.2f ms", status.inference_ms, status.frame_age_ms);
+        ImGui::Text("Captured: %llu    Inferred: %llu\nSkipped: %llu    OSC failures: %llu",
+          static_cast<unsigned long long>(status.frames_captured),
+          static_cast<unsigned long long>(status.frames_inferred),
+          static_cast<unsigned long long>(status.frames_skipped),
+          static_cast<unsigned long long>(status.osc_failures));
+        ImGui::PlotLines("Inference FPS", rates.data(), static_cast<int>(rates.size()),
+          static_cast<int>(graph_index), nullptr, 0.0F, 120.0F, ImVec2(0, 80));
+        ImGui::SeparatorText("Controls");
+        ImGui::BeginDisabled(!ipc || !fresh);
+        bool changed =
+          ImGui::Checkbox(status.inference_enabled ? "Pause inference" : "Pause preview", &paused);
+        ImGui::BeginDisabled(!status.inference_enabled);
+        changed |= ImGui::Checkbox("Send OSC", &osc_enabled);
+        ImGui::EndDisabled();
+        if (changed)
+          request_pending = true;
+        if (ipc && fresh && request_pending && (changed || requested_revision == 0))
+        {
+          if (!ipc->control(paused, osc_enabled, requested_revision))
+            requested_revision = 0;
+        }
+        ImGui::EndDisabled();
+        if (request_pending)
+          ImGui::TextUnformatted("Waiting for server to apply controls...");
+        ImGui::SeparatorText("Configuration");
+        ImGui::TextWrapped("Model: %s",
+          status.inference_enabled ? status.config.model.data() : "Capture only");
+        ImGui::Text("Device: %s    %ux%u @ %u fps    MNN threads: %u", status.config.device.data(),
+          status.config.width, status.config.height, status.config.fps, status.config.threads);
+        ImGui::TextWrapped("OSC: %s:%u %s", status.config.osc_host.data(), status.config.osc_port,
+          status.config.osc_address.data());
+        ImGui::Text("RGB normalization: (pixel - %.3f) * %.6f", status.config.mean, status.config.scale);
+        ImGui::TextUnformatted("Capture/model settings are supplied to the server at startup.");
+        ImGui::EndTable();
       }
-      ImGui::EndDisabled();
-      if (request_pending)
-        ImGui::TextUnformatted("Waiting for server to apply controls...");
-      ImGui::SeparatorText("Configuration");
-      ImGui::TextWrapped("Model: %s", status.config.model.data());
-      ImGui::Text("Device: %s    %ux%u @ %u fps    MNN threads: %u", status.config.device.data(),
-        status.config.width, status.config.height, status.config.fps, status.config.threads);
-      ImGui::TextWrapped("OSC: %s:%u %s", status.config.osc_host.data(), status.config.osc_port,
-        status.config.osc_address.data());
-      ImGui::Text("RGB normalization: (pixel - %.3f) * %.6f", status.config.mean, status.config.scale);
-      ImGui::TextUnformatted("Capture/model settings are supplied to the server at startup.");
       ImGui::SeparatorText("Parameters");
       if (ImGui::BeginTable("parameters", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
             ImVec2(0, 0)))
@@ -214,6 +270,7 @@ namespace
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
       glfwSwapBuffers(window);
     }
+    glDeleteTextures(1, &preview_texture);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

@@ -51,4 +51,45 @@ namespace sof
       }
     }
   }
+
+  void yuyv_luma_to_rgb(const std::uint8_t* source, std::ptrdiff_t stride, Frame& frame)
+  {
+    if (!frame.width || !frame.height || (stride >= 0 ? stride : -stride) < frame.width * 2)
+      throw std::runtime_error("Invalid YUYV luminance row stride");
+    frame.rgb.resize(static_cast<std::size_t>(frame.width) * frame.height * 3);
+    for (std::uint32_t y = 0; y < frame.height; ++y)
+    {
+      const auto* row = source + static_cast<std::ptrdiff_t>(y) * stride;
+      auto* dest = frame.rgb.data() + static_cast<std::size_t>(y) * frame.width * 3;
+      for (std::uint32_t x = 0; x < frame.width; ++x)
+      {
+        const auto luminance = row[x * 2];
+        dest[x * 3] = dest[x * 3 + 1] = dest[x * 3 + 2] = luminance;
+      }
+    }
+  }
+
+  void resize_preview(const Frame& source, Frame& dest, std::uint32_t max_width, std::uint32_t max_height)
+  {
+    if (!source.width || !source.height || !max_width || !max_height || source.rgb.size() != static_cast<std::size_t>(source.width) * source.height * 3)
+      throw std::runtime_error("Invalid RGB preview source");
+    const auto scale = std::min({ 1.0, static_cast<double>(max_width) / source.width,
+      static_cast<double>(max_height) / source.height });
+    dest.width = std::max(1U, static_cast<std::uint32_t>(source.width * scale));
+    dest.height = std::max(1U, static_cast<std::uint32_t>(source.height * scale));
+    dest.sequence = source.sequence;
+    dest.timestamp_ns = source.timestamp_ns;
+    dest.rgb.resize(static_cast<std::size_t>(dest.width) * dest.height * 3);
+    for (std::uint32_t y = 0; y < dest.height; ++y)
+    {
+      const auto sy = static_cast<std::uint64_t>(y) * source.height / dest.height;
+      for (std::uint32_t x = 0; x < dest.width; ++x)
+      {
+        const auto sx = static_cast<std::uint64_t>(x) * source.width / dest.width;
+        const auto from = static_cast<std::size_t>(sy * source.width + sx) * 3;
+        const auto to = (static_cast<std::size_t>(y) * dest.width + x) * 3;
+        std::copy_n(source.rgb.data() + from, 3, dest.rgb.data() + to);
+      }
+    }
+  }
 }  // namespace sof

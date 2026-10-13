@@ -177,8 +177,8 @@ namespace sof
     Impl::Guard guard { *impl_ };
     if (server)
     {
-      const SharedBlock initial {};
-      std::memcpy(impl_->block, &initial, sizeof(initial));
+      const auto initial = std::make_unique<SharedBlock>();
+      std::memcpy(impl_->block, initial.get(), sizeof(SharedBlock));
     }
     else
     {
@@ -222,6 +222,43 @@ namespace sof
     controls.paused = paused ? 1U : 0U;
     controls.osc_enabled = osc_enabled ? 1U : 0U;
     revision = ++controls.revision;
+    return true;
+  }
+
+  bool SharedMemory::publish_frame(const Frame& frame)
+  {
+    if (!frame.width || !frame.height || frame.width > preview_width || frame.height > preview_height || frame.rgb.size() != static_cast<std::size_t>(frame.width) * frame.height * 3)
+      throw std::runtime_error("Invalid or oversized preview frame");
+    if (!impl_->lock())
+      return false;
+    Impl::Guard guard { *impl_ };
+    impl_->validate();
+    auto& preview = impl_->block->preview;
+    preview.width = frame.width;
+    preview.height = frame.height;
+    preview.timestamp_ns = frame.timestamp_ns;
+    std::memcpy(preview.rgb.data(), frame.rgb.data(), frame.rgb.size());
+    preview.sequence = frame.sequence;
+    return true;
+  }
+
+  bool SharedMemory::read_frame(Frame& frame)
+  {
+    if (!impl_->lock())
+      return false;
+    Impl::Guard guard { *impl_ };
+    impl_->validate();
+    const auto& preview = impl_->block->preview;
+    if (!preview.sequence || preview.sequence == frame.sequence)
+      return false;
+    if (!preview.width || !preview.height || preview.width > preview_width || preview.height > preview_height)
+      throw std::runtime_error("Invalid shared preview dimensions");
+    frame.width = preview.width;
+    frame.height = preview.height;
+    frame.timestamp_ns = preview.timestamp_ns;
+    frame.rgb.resize(static_cast<std::size_t>(frame.width) * frame.height * 3);
+    std::memcpy(frame.rgb.data(), preview.rgb.data(), frame.rgb.size());
+    frame.sequence = preview.sequence;
     return true;
   }
 }  // namespace sof

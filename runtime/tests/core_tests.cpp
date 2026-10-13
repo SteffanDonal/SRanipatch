@@ -1,7 +1,9 @@
 #include "sof/frame.hpp"
 #include "sof/ipc.hpp"
 #include "sof/osc.hpp"
+#include "sof/vive_tracker.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <iostream>
@@ -126,6 +128,15 @@ namespace
     sof::yuyv_to_rgb(source.data(), 6, frame);
     require(frame.rgb == std::vector<std::uint8_t> { 0, 0, 0, 255, 255, 255, 255, 255, 255, 0, 0, 0 },
       "YUYV conversion or padded row handling is wrong");
+    sof::yuyv_luma_to_rgb(source.data(), 6, frame);
+    require(frame.rgb == std::vector<std::uint8_t> { 16, 16, 16, 235, 235, 235, 235, 235, 235, 16, 16, 16 },
+      "VIVE luminance decoding must ignore chroma and preserve raw luminance");
+    sof::yuyv_luma_to_rgb(source.data() + 6, -6, frame);
+    require(frame.rgb[0] == 235 && frame.rgb[6] == 16, "Negative luminance row stride is wrong");
+    sof::Frame small;
+    sof::resize_preview(frame, small, 1, 1);
+    require(small.width == 1 && small.height == 1 && small.rgb.size() == 3 && small.rgb[0] == 235,
+      "Preview resize did not preserve the sampled pixel");
     sof::LatestFrame latest;
     frame.sequence = 1;
     latest.push(frame);
@@ -159,12 +170,81 @@ namespace
     require(client.control(true, false, revision), "Control write failed");
     require(server->publish(status, controls) && controls.revision == revision && controls.paused == 1 && controls.osc_enabled == 0,
       "Server did not receive controls");
+    sof::Frame image;
+    image.width = image.height = 2;
+    image.sequence = 10;
+    image.rgb.assign(12, 123);
+    require(server->publish_frame(image), "Preview publication failed");
+    sof::Frame received_frame;
+    require(client.read_frame(received_frame) && received_frame.rgb == image.rgb && received_frame.sequence == 10,
+      "Mapped preview pixels differ");
+    require(!client.read_frame(received_frame), "Unchanged preview must not be copied again");
     server.reset();
     server = std::make_unique<sof::SharedMemory>(name, sof::SharedMemory::Role::server);
     require(client.read(received, controls) && received.frames_inferred == 0 && controls.revision == 0,
       "A connected client did not see the restarted server's reset state");
+    require(!client.read_frame(received_frame), "Restarted server exposed a stale preview");
     must_throw([] { sof::SharedMemory invalid("../bad", sof::SharedMemory::Role::server); });
     must_throw([] { sof::SharedMemory missing(test_name(), sof::SharedMemory::Role::client); });
+  }
+
+  void tracker_commands()
+  {
+    struct FakeExtension final : sof::TrackerExtension
+    {
+      std::size_t size { 64 };
+      std::vector<std::vector<std::uint8_t>> commands;
+      bool pending {}, wrong_echo {};
+
+      std::size_t buffer_size() const override
+      {
+        return size;
+      }
+
+      void set(std::span<const std::uint8_t> data) override
+      {
+        require(data.size() == size, "Vendor command has the wrong buffer size");
+        commands.emplace_back(data.begin(), data.end());
+        pending = true;
+      }
+
+      void get(std::span<std::uint8_t> data) override
+      {
+        std::fill(data.begin(), data.end(), std::uint8_t { 0 });
+        if (pending)
+        {
+          data[0] = 0x55;
+          pending = false;
+          return;
+        }
+        data[0] = 0x56;
+        std::copy_n(commands.back().begin(), 16, data.begin() + 1);
+        if (wrong_echo)
+          data[1] ^= 1;
+      }
+    };
+
+    for (const std::size_t size : { std::size_t { 64 }, std::size_t { 384 } })
+    {
+      FakeExtension extension;
+      extension.size = size;
+      sof::enable_vive_tracker(extension);
+      require(extension.commands.size() == 16, "VIVE initialization did not send all sensor commands");
+      require(extension.commands[1][1] == 0x14 && extension.commands[1][3] == 0 && extension.commands.back()[1] == 0x14 && extension.commands.back()[3] == 1,
+        "VIVE stream enable was not ordered after initialization");
+      const std::array<std::uint8_t, 17> expected { 0x50, 0xab, 0x60, 1, 1, 0, 0, 0, 0x70,
+        0x90, 1, 0, 1, 0, 0, 0, 0 };
+      require(std::equal(expected.begin(), expected.end(), extension.commands[5].begin()),
+        "Sensor register command has invalid widths, byte order or page address");
+      if (size == 384)
+        require(extension.commands.front()[254] == 0x53 && extension.commands.front()[255] == 0x54,
+          "384-byte VIVE handshake footer is missing");
+      sof::disable_vive_tracker(extension);
+      require(extension.commands.back()[3] == 0, "VIVE stream was not disabled");
+    }
+    FakeExtension invalid;
+    invalid.wrong_echo = true;
+    must_throw([&] { sof::enable_vive_tracker(invalid); });
   }
 
   void process_roundtrip(const char* executable)
@@ -239,6 +319,7 @@ int main(int argc, char** argv)
       osc_encoding();
       udp_delivery();
       frames();
+      tracker_commands();
       ipc_roundtrip();
     }
     std::cout << "All checks passed\n";

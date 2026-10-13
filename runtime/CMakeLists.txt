@@ -70,7 +70,14 @@ function(sof_target target)
     endif()
 endfunction()
 
-add_library(sof_core STATIC src/ipc.cpp src/osc.cpp src/frame.cpp)
+add_library(
+    sof_core
+    STATIC
+    src/ipc.cpp
+    src/osc.cpp
+    src/frame.cpp
+    src/capture/vive_tracker.cpp
+)
 target_include_directories(sof_core PUBLIC include)
 target_link_libraries(sof_core PUBLIC Threads::Threads)
 if(WIN32)
@@ -85,26 +92,33 @@ if(SOF_BUILD_SERVER)
     else()
         set(capture_source src/capture/v4l2.cpp)
     endif()
-    add_executable(
-        sof-server
-        src/server/main.cpp
-        src/inference/mnn.cpp
-        ${capture_source}
-    )
+    add_library(sof_capture STATIC ${capture_source})
+    target_link_libraries(sof_capture PUBLIC sof_core)
+    sof_target(sof_capture)
+    add_executable(sof-server src/server/main.cpp src/inference/mnn.cpp)
     target_include_directories(
         sof-server
         SYSTEM
         PRIVATE "${mnn_SOURCE_DIR}/include"
     )
-    target_link_libraries(sof-server PRIVATE sof_core MNN)
+    target_link_libraries(sof-server PRIVATE sof_capture MNN)
     if(WIN32)
         target_link_libraries(
-            sof-server
-            PRIVATE mfplat mfreadwrite mfuuid mf ole32
+            sof_capture
+            PRIVATE mfplat mfreadwrite mfuuid mf ole32 strmiids ksuser
         )
     endif()
     sof_target(sof-server)
     install(TARGETS sof-server RUNTIME DESTINATION bin COMPONENT Runtime)
+    add_executable(sof-capture src/capture/main.cpp)
+    target_link_libraries(sof-capture PRIVATE sof_capture)
+    sof_target(sof-capture)
+    install(TARGETS sof-capture RUNTIME DESTINATION bin COMPONENT Runtime)
+    install(
+        FILES third_party/vivefacialtracker-LICENSE.txt
+        DESTINATION share/licenses
+        COMPONENT Runtime
+    )
 endif()
 
 if(SOF_BUILD_CLIENT)

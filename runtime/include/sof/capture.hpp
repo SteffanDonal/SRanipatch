@@ -18,4 +18,8 @@ namespace sof
 
   // Construct and destroy on the capture thread (Media Foundation COM affinity).
   std::unique_ptr<Capture> open_capture(const Config& config);
+#ifdef _WIN32
+  // Includes native formats; does not enable streams or send vendor commands.
+  void list_capture_devices();
+#endif
 }  // namespace sof

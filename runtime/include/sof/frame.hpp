@@ -1,5 +1,6 @@
 #pragma once
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <stop_token>
@@ -31,4 +32,6 @@ namespace sof
   };
 
   void yuyv_to_rgb(const std::uint8_t* source, std::uint32_t stride, Frame& frame);
+  void yuyv_luma_to_rgb(const std::uint8_t* source, std::ptrdiff_t stride, Frame& frame);
+  void resize_preview(const Frame& source, Frame& dest, std::uint32_t max_width, std::uint32_t max_height);
 }  // namespace sof

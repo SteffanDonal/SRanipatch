@@ -40,15 +40,24 @@ sof-client
 
 On Windows, use `--device 0`. Run `sof-server --help` for capture, normalization, tensor selection, OSC and IPC options. Both processes must use the same `--ipc` name. Capture/model configuration is supplied at server startup; GUI controls apply live.
 
+For the VIVE Facial Tracker on Windows:
+
+```powershell
+./build/windows-x64/Release/sof-server.exe --capture-only --device vive
+./build/windows-x64/Release/sof-client.exe
+```
+
+`vive` selects USB VID/PID `0BB4:0321`, applies the vendor initialization sequence, and defaults to 400×400 at 60 fps. The client displays the packed stereo image or either camera separately. `sof-capture --list` lists native camera modes; `sof-capture --device vive --frames 120 --output frame.ppm` checks capture without inference or a GUI. The [device protocol](https://github.com/LordOfDragons/vivefacialtracker) supports 64- and 384-byte extension payloads; decoding preserves the raw Y bytes and ignores chroma. Linux VIVE extension control is not wired into its capture backend yet.
+
 The files in `../assets/models/` are Git LFS JSON/NPZ weights, not converted MNN graphs. Their network architecture, preprocessing and eye/lip output mapping still need to be established. The generic [MNN adapter](src/inference/mnn.cpp) accepts one fixed float32 RGB image input, bilinearly resizes it, applies `(pixel - mean) * scale`, and exposes one selected float output as unnamed parameters. It is a scaffold contract, not a claim about those weights. No demo or synthetic inference is included.
 
 ## Platform boundaries
 
 - Linux: [V4L2 MMAP streaming](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/mmap.html) through the kernel's `uvcvideo` driver. Initial format support is single-plane YUYV with limited-range BT.601 conversion. MJPEG/NV12 and camera colorimetry require format adapters. The user needs access to the video device.
-- Windows: [Media Foundation source reader](https://learn.microsoft.com/en-us/windows/win32/medfound/processing-media-data-with-the-source-reader), asynchronous capture and RGB32 conversion. Requested native camera dimensions and frame rate must be available.
-- IPC: fixed-size, versioned snapshots under a Windows named mutex or Linux `flock`; no process-shared C++ atomics. Server publication and client reads are nonblocking. One server owns each channel. Commands carry revisions with server acknowledgements; heartbeat expiry detects stopped servers. Linux regions are private per user and retained across restarts; Windows names are local to the session. This transports status/controls, not video.
+- Windows: [Media Foundation source reader](https://learn.microsoft.com/en-us/windows/win32/medfound/processing-media-data-with-the-source-reader), asynchronous capture and RGB32 conversion for ordinary webcams, native YUY2 for the VIVE tracker. Vendor controls use `IKsControl`, with a KS proxy fallback when Media Foundation does not expose topology. Requested native camera dimensions and frame rate must be available.
+- IPC: fixed-size, versioned snapshots under a Windows named mutex or Linux `flock`; no process-shared C++ atomics. Server publication and client reads are nonblocking. One server owns each channel. Commands carry revisions with server acknowledgements; heartbeat expiry detects stopped servers. Linux regions are private per user and retained across restarts; Windows names are local to the session. RGB previews are bounded to 640×480 and published at roughly 30 Hz, independently of capture rate. Status reads only copy metadata; preview reads skip unchanged frames. Client and server must use the same protocol version.
 - OSC: [OSC 1.0](https://opensoundcontrol.stanford.edu/spec-1_0.html) float arguments in a single UDP message per inference, in parameter order. Default address is `/sranipal/parameters`; destinations are numeric IPv4/IPv6 addresses. Output is bounded to 128 parameters and UDP sends are nonblocking.
 
 Capture and inference use separate threads with a latest-frame mailbox. Buffers and host tensors are reused; inference skips stale frames rather than accumulating a queue. Frame age measures receipt-to-result latency, not exposure-to-result latency. The client polls status at roughly 30 Hz independently of camera/inference rates.
 
-Core tests cover wire encoding, UDP delivery, image row stride, frame replacement and IPC commands across real processes. CI builds Windows x64 and native Linux ARM64, cross-compiles AArch64, and runs core sanitizers on Linux. Camera/model integration requires hardware and converted graphs.
+Core tests cover wire encoding, UDP delivery, image row stride, luminance decoding, vendor command acknowledgement, frame replacement, mapped previews and IPC commands across real processes. CI builds Windows x64 and native Linux ARM64, cross-compiles AArch64, and runs core sanitizers on Linux. Camera/model integration requires hardware and converted graphs.
