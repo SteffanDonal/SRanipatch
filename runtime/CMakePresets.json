@@ -19,7 +19,11 @@
       "name": "linux-release",
       "inherits": "base",
       "generator": "Ninja",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "GLFW_BUILD_WAYLAND": "ON",
+        "GLFW_BUILD_X11": "ON"
+      },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
     },
     {

@@ -50,8 +50,10 @@ function(sof_add_gui)
     set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        # X11 also works through XWayland; native Wayland can be enabled explicitly.
-        option(GLFW_BUILD_WAYLAND "Build the GLFW Wayland backend" OFF)
+        # Build both desktop backends. GLFW selects from the session environment;
+        # scripts/run-linux.sh explicitly selects XWayland for affected Gamescope builds.
+        option(GLFW_BUILD_WAYLAND "Build the GLFW Wayland backend" ON)
+        option(GLFW_BUILD_X11 "Build the GLFW X11 backend" ON)
     endif()
     FetchContent_Declare(
         glfw

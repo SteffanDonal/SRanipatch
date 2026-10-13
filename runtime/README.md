@@ -18,10 +18,10 @@ ctest --preset windows-x64
 
 With Visual Studio 2026, add `-G "Visual Studio 18 2026"` to configuration. Executables are in `build/windows-x64/Release`.
 
-Linux (including native AArch64): GCC 12+ or Clang 16+, Ninja, OpenGL and X11 development headers.
+Linux (including native AArch64): GCC 12+ or Clang 16+, Ninja, OpenGL, X11 and Wayland development headers.
 
 ```sh
-sudo apt-get install ninja-build libgl1-mesa-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+sudo apt-get install ninja-build libgl1-mesa-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
 cmake --preset linux-release
 cmake --build --preset linux-release --parallel
 ctest --preset linux-release
@@ -40,6 +40,8 @@ sof-client
 
 Run `sof-server --help` for normalization, tensor selection, OSC and IPC options. Both processes must use the same `--ipc` name. Model configuration is supplied at server startup; GUI controls apply live.
 
+Linux GUI builds include both GLFW Wayland and X11 backends. GLFW normally selects the backend from the session environment. On Steam Frame with Gamescope 3.16.28, use Gamescope's XWayland display because its native `xdg-shell` path currently does not route mouse and close events reliably. `sh scripts/run-linux.sh` selects that path, starts the capture-only server and client together, and always stops the server when the client exits or the job is interrupted.
+
 For the VIVE Facial Tracker on Windows:
 
 ```powershell
@@ -47,13 +49,13 @@ For the VIVE Facial Tracker on Windows:
 ./build/windows-x64/Release/sof-client.exe
 ```
 
-Capture is intentionally fixed to the VIVE Facial Tracker: Windows locates the single USB `0BB4:0321` device, applies its vendor initialization sequence, and opens native 400×400 YUY2 at 60 fps. There are no device or format overrides. The client displays the packed stereo image or either camera separately. `sof-capture --frames 120 --output frame.ppm` checks the same capture path without inference or a GUI. The [device protocol](https://github.com/LordOfDragons/vivefacialtracker) supports 64- and 384-byte extension payloads; decoding preserves the raw Y bytes and ignores chroma. Linux currently opens `/dev/video0` with the same fixed format, but VIVE extension control is not wired into that backend yet.
+Capture is intentionally fixed to the VIVE Facial Tracker: both platforms locate the single USB `0BB4:0321` capture device, apply its vendor initialization sequence, and open native 400×400 YUY2/YUYV at 60 fps. There are no device or format overrides. The client displays the packed stereo image or either camera separately. `sof-capture --frames 120 --output frame.ppm` checks the same capture path without inference or a GUI. The [device protocol](https://github.com/LordOfDragons/vivefacialtracker) supports 64- and 384-byte extension payloads; decoding preserves the raw Y bytes and ignores chroma.
 
 The files in `../assets/models/` are Git LFS JSON/NPZ weights, not converted MNN graphs. Their network architecture, preprocessing and eye/lip output mapping still need to be established. The generic [MNN adapter](src/inference/mnn.cpp) accepts one fixed float32 RGB image input, bilinearly resizes it, applies `(pixel - mean) * scale`, and exposes one selected float output as unnamed parameters. It is a scaffold contract, not a claim about those weights. No demo or synthetic inference is included.
 
 ## Platform boundaries
 
-- Linux: [V4L2 MMAP streaming](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/mmap.html) through the kernel's `uvcvideo` driver. It opens `/dev/video0` as 400×400 YUYV at 60 fps and preserves the VIVE's raw luminance bytes. The user needs access to the video device.
+- Linux: [V4L2 MMAP streaming](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/mmap.html) through the kernel's `uvcvideo` driver. It discovers the capture node belonging to USB `0BB4:0321`, controls extension unit 4 through `UVCIOC_CTRL_QUERY`, and captures 400×400 YUYV at 60 fps while preserving the VIVE's raw luminance bytes. The user needs access to the video device.
 - Windows: [Media Foundation source reader](https://learn.microsoft.com/en-us/windows/win32/medfound/processing-media-data-with-the-source-reader) asynchronous native YUY2 capture. The camera is selected only by VIVE USB VID/PID. Vendor controls use `IKsControl`, with a KS proxy fallback when Media Foundation does not expose topology.
 - IPC: fixed-size, versioned snapshots under a Windows named mutex or Linux `flock`; no process-shared C++ atomics. Server publication and client reads are nonblocking. One server owns each channel. Commands carry revisions with server acknowledgements; heartbeat expiry detects stopped servers. Linux regions are private per user and retained across restarts; Windows names are local to the session. Fixed 400×400 RGB previews are published at roughly 30 Hz, independently of capture rate. Status reads only copy metadata; preview reads skip unchanged frames. Client and server must use the same protocol version.
 - OSC: [OSC 1.0](https://opensoundcontrol.stanford.edu/spec-1_0.html) float arguments in a single UDP message per inference, in parameter order. Default address is `/sranipal/parameters`; destinations are numeric IPv4/IPv6 addresses. Output is bounded to 128 parameters and UDP sends are nonblocking.

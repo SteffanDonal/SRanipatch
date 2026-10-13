@@ -1,6 +1,9 @@
 #include "sof/capture.hpp"
+#include "sof/vive_tracker.hpp"
 
 #include <fcntl.h>
+#include <linux/usb/video.h>
+#include <linux/uvcvideo.h>
 #include <linux/videodev2.h>
 #include <poll.h>
 #include <sys/ioctl.h>
@@ -9,12 +12,18 @@
 
 #include <cerrno>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <stdexcept>
 
 namespace sof
 {
   namespace
   {
+    constexpr std::uint8_t vive_extension_unit = 4;
+    constexpr std::uint8_t vive_extension_selector = 2;
+
     int call_ioctl(int fd, unsigned long request, void* argument)
     {
       int result;
@@ -32,6 +41,102 @@ namespace sof
         throw std::runtime_error(std::string(operation) + ": " + std::strerror(errno));
     }
 
+    std::string read_sysfs_value(const std::filesystem::path& path)
+    {
+      std::ifstream input(path);
+      std::string value;
+      input >> value;
+      return value;
+    }
+
+    bool is_vive_video_node(const std::filesystem::path& entry)
+    {
+      std::error_code error;
+      auto current = std::filesystem::canonical(entry / "device", error);
+      if (error)
+        return false;
+      while (current.has_parent_path() && current != current.root_path())
+      {
+        if (read_sysfs_value(current / "idVendor") == "0bb4" && read_sysfs_value(current / "idProduct") == "0321")
+          return true;
+        current = current.parent_path();
+      }
+      return false;
+    }
+
+    std::filesystem::path find_vive_video_device()
+    {
+      constexpr auto video_class = "/sys/class/video4linux";
+      std::vector<std::filesystem::path> matches;
+      std::error_code error;
+      std::filesystem::directory_iterator entries(video_class, error);
+      if (error)
+        throw std::runtime_error("Cannot enumerate Linux video devices: " + error.message());
+
+      for (const auto& entry : entries)
+      {
+        if (!is_vive_video_node(entry.path()))
+          continue;
+        const auto device = std::filesystem::path { "/dev" } / entry.path().filename();
+        const int fd = open(device.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
+        if (fd < 0)
+          throw std::runtime_error("Cannot open VIVE video node " + device.string() + ": " + std::strerror(errno));
+        v4l2_capability caps {};
+        const bool queried = call_ioctl(fd, VIDIOC_QUERYCAP, &caps) == 0;
+        close(fd);
+        if (!queried)
+          continue;
+        const auto capabilities =
+          (caps.capabilities & V4L2_CAP_DEVICE_CAPS) ? caps.device_caps : caps.capabilities;
+        if ((capabilities & V4L2_CAP_VIDEO_CAPTURE) && (capabilities & V4L2_CAP_STREAMING))
+          matches.push_back(device);
+      }
+      if (matches.size() != 1)
+        throw std::runtime_error(
+          "Expected exactly one VIVE Facial Tracker capture node (USB 0BB4:0321); found " + std::to_string(matches.size())
+        );
+      return matches.front();
+    }
+
+    class UvcExtension final : public TrackerExtension
+    {
+      int fd_;
+      std::size_t size_;
+
+      void query(std::uint8_t request, std::uint8_t* data, std::size_t size, const char* operation)
+      {
+        if (size > UINT16_MAX)
+          throw std::runtime_error("VIVE extension payload is too large");
+        uvc_xu_control_query control { vive_extension_unit, vive_extension_selector, request,
+          static_cast<std::uint16_t>(size), data };
+        checked_ioctl(fd_, UVCIOC_CTRL_QUERY, &control, operation);
+      }
+
+    public:
+      explicit UvcExtension(int fd) : fd_(fd)
+      {
+        std::uint16_t size {};
+        query(UVC_GET_LEN, reinterpret_cast<std::uint8_t*>(&size), sizeof(size), "VIVE GET_LEN");
+        size_ = size;
+        std::cout << "VIVE extension: unit 4, selector 2, " << size_ << " bytes\n";
+      }
+
+      std::size_t buffer_size() const override
+      {
+        return size_;
+      }
+
+      void get(std::span<std::uint8_t> data) override
+      {
+        query(UVC_GET_CUR, data.data(), data.size(), "VIVE GET_CUR");
+      }
+
+      void set(std::span<const std::uint8_t> data) override
+      {
+        query(UVC_SET_CUR, const_cast<std::uint8_t*>(data.data()), data.size(), "VIVE SET_CUR");
+      }
+    };
+
     class V4l2 final : public Capture
     {
       struct Buffer
@@ -41,6 +146,7 @@ namespace sof
       };
 
       int fd_ { -1 };
+      std::unique_ptr<UvcExtension> extension_;
       std::vector<Buffer> buffers_;
       std::uint32_t width_ {}, height_ {}, stride_ {};
       std::uint64_t sequence_ {};
@@ -56,6 +162,18 @@ namespace sof
         for (const auto& buffer : buffers_)
           if (buffer.data != MAP_FAILED)
             munmap(buffer.data, buffer.size);
+        if (extension_)
+        {
+          try
+          {
+            disable_vive_tracker(*extension_);
+          }
+          catch (const std::exception& error)
+          {
+            std::cerr << "VIVE shutdown: " << error.what() << '\n';
+          }
+          extension_.reset();
+        }
         if (fd_ >= 0)
           close(fd_);
       }
@@ -65,7 +183,8 @@ namespace sof
       {
         try
         {
-          fd_ = open("/dev/video0", O_RDWR | O_NONBLOCK | O_CLOEXEC);
+          const auto device = find_vive_video_device();
+          fd_ = open(device.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
           if (fd_ < 0)
             throw std::runtime_error("Cannot open V4L2 device: " + std::string(std::strerror(errno)));
           v4l2_capability caps {};
@@ -74,6 +193,10 @@ namespace sof
             (caps.capabilities & V4L2_CAP_DEVICE_CAPS) ? caps.device_caps : caps.capabilities;
           if (!(capabilities & V4L2_CAP_VIDEO_CAPTURE) || !(capabilities & V4L2_CAP_STREAMING))
             throw std::runtime_error("Camera must support single-plane V4L2 streaming capture");
+          std::cout << "Opening " << caps.card << " at " << device << '\n';
+          extension_ = std::make_unique<UvcExtension>(fd_);
+          enable_vive_tracker(*extension_);
+          std::cout << "VIVE sensor registers configured; stream enabled\n";
           v4l2_format format {};
           format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
           format.fmt.pix.width = capture_width;

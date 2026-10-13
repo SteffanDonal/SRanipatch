@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <csignal>
 #include <cstdio>
 #include <iostream>
 #include <memory>
@@ -14,6 +15,13 @@
 
 namespace
 {
+  volatile std::sig_atomic_t interrupted {};
+
+  void interrupt(int)
+  {
+    interrupted = 1;
+  }
+
   const char* state_name(sof::ServerState state)
   {
     switch (state)
@@ -99,7 +107,7 @@ namespace
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp_to_edge);
     std::uint32_t texture_width {}, texture_height {};
     int camera_view {};
-    while (!glfwWindowShouldClose(window))
+    while (!interrupted && !glfwWindowShouldClose(window))
     {
       glfwWaitEventsTimeout(1.0 / 30.0);
       const auto now = sof::monotonic_ns();
@@ -180,6 +188,9 @@ namespace
       ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
       ImGui::Begin("Server", nullptr,
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+      if (ImGui::Button("Quit") || ImGui::IsKeyPressed(ImGuiKey_Escape))
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+      ImGui::SameLine();
       ImGui::Text("Channel: %s", name.c_str());
       ImGui::Text("Status: %s%s", state_name(status.state), fresh ? "" : " (offline)");
       if (!ipc)
@@ -284,6 +295,8 @@ int main(int argc, char** argv)
 {
   try
   {
+    std::signal(SIGINT, interrupt);
+    std::signal(SIGTERM, interrupt);
     const auto name = channel(argc, argv);
     return name.empty() ? 0 : run(name);
   }
