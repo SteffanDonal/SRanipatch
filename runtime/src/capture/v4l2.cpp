@@ -150,7 +150,15 @@ namespace sof
       std::vector<Buffer> buffers_;
       std::uint32_t width_ {}, height_ {}, stride_ {};
       std::uint64_t sequence_ {};
+      std::uint64_t dropped_ {};
       bool streaming_ {};
+
+      void dropped_frame()
+      {
+        ++dropped_;
+        if (dropped_ == 1 || dropped_ % capture_fps == 0)
+          std::cerr << "V4L2: discarded " << dropped_ << " invalid or incomplete frame(s)\n";
+      }
 
       void close_device() noexcept
       {
@@ -278,15 +286,21 @@ namespace sof
             return false;
           throw std::runtime_error("VIDIOC_DQBUF failed");
         }
+        if (buffer.index >= buffers_.size())
+          throw std::runtime_error("V4L2 returned an invalid buffer index");
+        const auto needed = static_cast<std::size_t>(height_ - 1) * stride_ + width_ * 2;
+        frame.sequence = ++sequence_;
+        if (buffer.bytesused < needed || buffer.bytesused > buffers_[buffer.index].size || (buffer.flags & V4L2_BUF_FLAG_ERROR))
+        {
+          dropped_frame();
+          checked_ioctl(fd_, VIDIOC_QBUF, &buffer, "VIDIOC_QBUF");
+          return false;
+        }
         try
         {
-          const auto needed = static_cast<std::size_t>(height_ - 1) * stride_ + width_ * 2;
-          if (buffer.index >= buffers_.size() || buffer.bytesused < needed || buffer.bytesused > buffers_[buffer.index].size || (buffer.flags & V4L2_BUF_FLAG_ERROR))
-            throw std::runtime_error("Invalid / incomplete V4L2 frame");
           frame.width = width_;
           frame.height = height_;
           frame.timestamp_ns = monotonic_ns();
-          frame.sequence = ++sequence_;
           yuyv_luma_to_rgb(static_cast<const std::uint8_t*>(buffers_[buffer.index].data), stride_, frame);
         }
         catch (...)

@@ -11,7 +11,8 @@ namespace sof
   {
   public:
     virtual ~Capture() = default;
-    // False means timeout; disconnection and configuration errors throw.
+    // False means timeout or a discarded malformed sample. Disconnection,
+    // configuration and transport errors throw.
     virtual bool read(Frame& frame, std::stop_token stop) = 0;
   };
 

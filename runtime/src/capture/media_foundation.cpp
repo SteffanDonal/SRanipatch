@@ -297,8 +297,16 @@ namespace sof
       UINT32 width_ {}, height_ {};
       LONG stride_ {};
       std::uint64_t sequence_ {};
+      std::uint64_t dropped_ {};
       std::unique_ptr<WindowsTrackerExtension> tracker_;
       bool tracker_initialized_ {};
+
+      void dropped_frame(const char* reason)
+      {
+        ++dropped_;
+        if (dropped_ == 1 || dropped_ % capture_fps == 0)
+          std::cerr << "Media Foundation: discarded " << dropped_ << " frame(s); " << reason << '\n';
+      }
 
       void shutdown() noexcept
       {
@@ -491,7 +499,8 @@ namespace sof
           if (row_size < width_ * 2 || length < row_size * height_)
           {
             buffer->Unlock();
-            throw std::runtime_error("Incomplete VIVE YUY2 frame");
+            dropped_frame("incomplete VIVE YUY2 buffer");
+            return false;
           }
           if (pitch < 0)
             data += (height_ - 1) * row_size;
@@ -502,7 +511,8 @@ namespace sof
             planar->Unlock2D();
           else
             buffer->Unlock();
-          throw std::runtime_error("Invalid VIVE YUY2 stride");
+          dropped_frame("invalid VIVE YUY2 stride");
+          return false;
         }
         yuyv_luma_to_rgb(data, pitch, frame);
         if (is_2d)
