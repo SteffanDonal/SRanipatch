@@ -1,13 +1,13 @@
+using System.Net;
 using Microsoft.Extensions.Logging;
 using VRCFaceTracking;
 using VRCFaceTracking.Core.Library;
 using VRCFaceTracking.Core.Params.Data;
 using VRCFaceTracking.Core.Params.Expressions;
-using VRCFaceTracking.Core.Types;
 
 namespace SRanipalExtTrackingInterface;
 
-public sealed class SRanipalExtTrackingInterface : ExtTrackingModule
+public sealed partial class SRanipalExtTrackingInterface : ExtTrackingModule
 {
     private OscReceiver? _receiver;
 
@@ -24,7 +24,7 @@ public sealed class SRanipalExtTrackingInterface : ExtTrackingModule
         ModuleInformation = new ModuleMetadata
         {
             Name = "SRAnipal on Frame (OSC)",
-            StaticImages = image is null ? new List<Stream>() : new List<Stream> { image },
+            StaticImages = image is null ? [] : [image],
         };
 
         if (!expressionAvailable)
@@ -33,10 +33,7 @@ public sealed class SRanipalExtTrackingInterface : ExtTrackingModule
         try
         {
             _receiver = new OscReceiver();
-            Logger.LogInformation(
-                "Listening for lip tracking at {Endpoint} {Address}",
-                OscReceiver.Endpoint,
-                OscReceiver.Address);
+            LogInitialization(Logger, OscReceiver.Endpoint, OscReceiver.Address);
             return (false, true);
         }
         catch (Exception exception)
@@ -67,40 +64,29 @@ public sealed class SRanipalExtTrackingInterface : ExtTrackingModule
     {
         float Get(LipParameter parameter) => value[(int)parameter];
 
-        data.Shapes[(int)UnifiedExpressions.JawOpen].Weight =
-            Get(LipParameter.JawOpen) + Get(LipParameter.MouthApeShape);
+        data.Shapes[(int)UnifiedExpressions.JawOpen].Weight = Get(LipParameter.JawOpen) + Get(LipParameter.MouthApeShape);
         data.Shapes[(int)UnifiedExpressions.JawLeft].Weight = Get(LipParameter.JawLeft);
         data.Shapes[(int)UnifiedExpressions.JawRight].Weight = Get(LipParameter.JawRight);
         data.Shapes[(int)UnifiedExpressions.JawForward].Weight = Get(LipParameter.JawForward);
         data.Shapes[(int)UnifiedExpressions.MouthClosed].Weight = Get(LipParameter.MouthApeShape);
 
-        data.Shapes[(int)UnifiedExpressions.MouthUpperUpRight].Weight =
-            Get(LipParameter.MouthUpperUpRight) - Get(LipParameter.MouthUpperOverturn);
-        data.Shapes[(int)UnifiedExpressions.MouthUpperDeepenRight].Weight =
-            Get(LipParameter.MouthUpperUpRight) - Get(LipParameter.MouthUpperOverturn);
-        data.Shapes[(int)UnifiedExpressions.MouthUpperUpLeft].Weight =
-            Get(LipParameter.MouthUpperUpLeft) - Get(LipParameter.MouthUpperOverturn);
-        data.Shapes[(int)UnifiedExpressions.MouthUpperDeepenLeft].Weight =
-            Get(LipParameter.MouthUpperUpLeft) - Get(LipParameter.MouthUpperOverturn);
+        data.Shapes[(int)UnifiedExpressions.MouthUpperUpRight].Weight = Get(LipParameter.MouthUpperUpRight) - Get(LipParameter.MouthUpperOverturn);
+        data.Shapes[(int)UnifiedExpressions.MouthUpperDeepenRight].Weight = Get(LipParameter.MouthUpperUpRight) - Get(LipParameter.MouthUpperOverturn);
+        data.Shapes[(int)UnifiedExpressions.MouthUpperUpLeft].Weight = Get(LipParameter.MouthUpperUpLeft) - Get(LipParameter.MouthUpperOverturn);
+        data.Shapes[(int)UnifiedExpressions.MouthUpperDeepenLeft].Weight = Get(LipParameter.MouthUpperUpLeft) - Get(LipParameter.MouthUpperOverturn);
 
-        data.Shapes[(int)UnifiedExpressions.MouthLowerDownLeft].Weight =
-            Get(LipParameter.MouthLowerDownLeft) - Get(LipParameter.MouthLowerOverturn);
-        data.Shapes[(int)UnifiedExpressions.MouthLowerDownRight].Weight =
-            Get(LipParameter.MouthLowerDownRight) - Get(LipParameter.MouthLowerOverturn);
+        data.Shapes[(int)UnifiedExpressions.MouthLowerDownLeft].Weight = Get(LipParameter.MouthLowerDownLeft) - Get(LipParameter.MouthLowerOverturn);
+        data.Shapes[(int)UnifiedExpressions.MouthLowerDownRight].Weight = Get(LipParameter.MouthLowerDownRight) - Get(LipParameter.MouthLowerOverturn);
 
         data.Shapes[(int)UnifiedExpressions.LipPuckerUpperLeft].Weight = Get(LipParameter.MouthPout);
         data.Shapes[(int)UnifiedExpressions.LipPuckerLowerLeft].Weight = Get(LipParameter.MouthPout);
         data.Shapes[(int)UnifiedExpressions.LipPuckerUpperRight].Weight = Get(LipParameter.MouthPout);
         data.Shapes[(int)UnifiedExpressions.LipPuckerLowerRight].Weight = Get(LipParameter.MouthPout);
 
-        data.Shapes[(int)UnifiedExpressions.LipFunnelUpperLeft].Weight =
-            Get(LipParameter.MouthUpperOverturn);
-        data.Shapes[(int)UnifiedExpressions.LipFunnelUpperRight].Weight =
-            Get(LipParameter.MouthUpperOverturn);
-        data.Shapes[(int)UnifiedExpressions.LipFunnelLowerLeft].Weight =
-            Get(LipParameter.MouthUpperOverturn);
-        data.Shapes[(int)UnifiedExpressions.LipFunnelLowerRight].Weight =
-            Get(LipParameter.MouthUpperOverturn);
+        data.Shapes[(int)UnifiedExpressions.LipFunnelUpperLeft].Weight = Get(LipParameter.MouthUpperOverturn);
+        data.Shapes[(int)UnifiedExpressions.LipFunnelUpperRight].Weight = Get(LipParameter.MouthUpperOverturn);
+        data.Shapes[(int)UnifiedExpressions.LipFunnelLowerLeft].Weight = Get(LipParameter.MouthUpperOverturn);
+        data.Shapes[(int)UnifiedExpressions.LipFunnelLowerRight].Weight = Get(LipParameter.MouthUpperOverturn);
 
         data.Shapes[(int)UnifiedExpressions.LipSuckUpperLeft].Weight = Get(LipParameter.MouthUpperInside);
         data.Shapes[(int)UnifiedExpressions.LipSuckUpperRight].Weight = Get(LipParameter.MouthUpperInside);
@@ -119,8 +105,7 @@ public sealed class SRanipalExtTrackingInterface : ExtTrackingModule
         data.Shapes[(int)UnifiedExpressions.MouthFrownLeft].Weight = Get(LipParameter.MouthSadLeft);
         data.Shapes[(int)UnifiedExpressions.MouthFrownRight].Weight = Get(LipParameter.MouthSadRight);
 
-        data.Shapes[(int)UnifiedExpressions.MouthRaiserUpper].Weight =
-            Get(LipParameter.MouthLowerOverlay) - Get(LipParameter.MouthUpperInside);
+        data.Shapes[(int)UnifiedExpressions.MouthRaiserUpper].Weight = Get(LipParameter.MouthLowerOverlay) - Get(LipParameter.MouthUpperInside);
         data.Shapes[(int)UnifiedExpressions.MouthRaiserLower].Weight = Get(LipParameter.MouthLowerOverlay);
 
         data.Shapes[(int)UnifiedExpressions.CheekPuffLeft].Weight = Get(LipParameter.CheekPuffLeft);
@@ -128,8 +113,7 @@ public sealed class SRanipalExtTrackingInterface : ExtTrackingModule
         data.Shapes[(int)UnifiedExpressions.CheekSuckLeft].Weight = Get(LipParameter.CheekSuck);
         data.Shapes[(int)UnifiedExpressions.CheekSuckRight].Weight = Get(LipParameter.CheekSuck);
 
-        data.Shapes[(int)UnifiedExpressions.TongueOut].Weight =
-            (Get(LipParameter.TongueLongStep1) + Get(LipParameter.TongueLongStep2)) / 2.0f;
+        data.Shapes[(int)UnifiedExpressions.TongueOut].Weight = (Get(LipParameter.TongueLongStep1) + Get(LipParameter.TongueLongStep2)) / 2.0f;
         data.Shapes[(int)UnifiedExpressions.TongueUp].Weight = Get(LipParameter.TongueUp);
         data.Shapes[(int)UnifiedExpressions.TongueDown].Weight = Get(LipParameter.TongueDown);
         data.Shapes[(int)UnifiedExpressions.TongueLeft].Weight = Get(LipParameter.TongueLeft);
@@ -143,4 +127,7 @@ public sealed class SRanipalExtTrackingInterface : ExtTrackingModule
         data.Shapes[(int)UnifiedExpressions.MouthStretchLeft].Weight = Get(LipParameter.MouthSadRight);
         data.Shapes[(int)UnifiedExpressions.MouthStretchRight].Weight = Get(LipParameter.MouthSadRight);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Listening for lip tracking at {Endpoint} {Address}")]
+    private static partial void LogInitialization(ILogger logger, IPEndPoint endpoint, string address);
 }
