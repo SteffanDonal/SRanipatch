@@ -4,7 +4,6 @@
     <TargetFramework>net7.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <Platforms>x64</Platforms>
   </PropertyGroup>
 
@@ -13,17 +12,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Assets\vive_hmd.png" />
-    <EmbeddedResource Include="Assets\vive_hmd.png">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </EmbeddedResource>
     <None Remove="Assets\vive_face_tracker.png" />
     <EmbeddedResource Include="Assets\vive_face_tracker.png" />
   </ItemGroup>
 
   <ItemGroup>
     <Reference Include="VRCFaceTracking.Core">
-      <HintPath>..\..\..\..\..\..\Program Files\WindowsApps\96ba052f-0948-44d8-86c4-a0212e4ae047_5.0.1.1_x64__d7rcq4vxghz0r\VRCFaceTracking.Core.dll</HintPath>
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\VRCFaceTracking\VRCFaceTracking.Core.dll</HintPath>
     </Reference>
   </ItemGroup>
 
