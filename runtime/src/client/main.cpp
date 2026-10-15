@@ -28,6 +28,8 @@ namespace
     {
       case sof::ServerState::starting:
         return "Starting";
+      case sof::ServerState::waiting_for_camera:
+        return "Waiting for camera";
       case sof::ServerState::running:
         return "Running";
       case sof::ServerState::paused:

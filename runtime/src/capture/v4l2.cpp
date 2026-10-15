@@ -2,12 +2,14 @@
 #include "sof/vive_tracker.hpp"
 
 #include <fcntl.h>
+#include <linux/netlink.h>
 #include <linux/usb/video.h>
 #include <linux/uvcvideo.h>
 #include <linux/videodev2.h>
 #include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -38,7 +40,11 @@ namespace sof
     void checked_ioctl(int fd, unsigned long request, void* argument, const char* operation)
     {
       if (call_ioctl(fd, request, argument) < 0)
+      {
+        if (errno == ENODEV)
+          throw CaptureUnavailable("V4L2 camera disconnected", false);
         throw std::runtime_error(std::string(operation) + ": " + std::strerror(errno));
+      }
     }
 
     std::string read_sysfs_value(const std::filesystem::path& path)
@@ -79,6 +85,8 @@ namespace sof
           continue;
         const auto device = std::filesystem::path { "/dev" } / entry.path().filename();
         const int fd = open(device.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
+        if (fd < 0 && (errno == ENOENT || errno == ENODEV))
+          continue;
         if (fd < 0)
           throw std::runtime_error("Cannot open VIVE video node " + device.string() + ": " + std::strerror(errno));
         v4l2_capability caps {};
@@ -91,6 +99,8 @@ namespace sof
         if ((capabilities & V4L2_CAP_VIDEO_CAPTURE) && (capabilities & V4L2_CAP_STREAMING))
           matches.push_back(device);
       }
+      if (matches.empty())
+        throw CaptureUnavailable("VIVE Facial Tracker USB 0BB4:0321 was not found", false);
       if (matches.size() != 1)
         throw std::runtime_error(
           "Expected exactly one VIVE Facial Tracker capture node (USB 0BB4:0321); found " + std::to_string(matches.size())
@@ -184,9 +194,8 @@ namespace sof
             ? "start of exposure"
             : "end of frame";
           if (monotonic && plausible)
-            std::cout << "V4L2 driver timestamps: monotonic, " << source
-                      << "; first frame age " << static_cast<double>(now - timestamp) / 1.0e6
-                      << " ms\n";
+            std::cout << "V4L2 driver timestamps: monotonic, " << source << "; first frame age "
+                      << static_cast<double>(now - timestamp) / 1.0e6 << " ms\n";
           else
             std::cerr << "V4L2 driver timestamps are unavailable or incompatible; using dequeue time\n";
           timestamp_reported_ = true;
@@ -236,8 +245,15 @@ namespace sof
           if (!(capabilities & V4L2_CAP_VIDEO_CAPTURE) || !(capabilities & V4L2_CAP_STREAMING))
             throw std::runtime_error("Camera must support single-plane V4L2 streaming capture");
           std::cout << "Opening " << caps.card << " at " << device << '\n';
-          extension_ = std::make_unique<UvcExtension>(fd_);
-          enable_vive_tracker(*extension_);
+          try
+          {
+            extension_ = std::make_unique<UvcExtension>(fd_);
+            enable_vive_tracker(*extension_);
+          }
+          catch (const std::exception& error)
+          {
+            throw CaptureUnavailable("VIVE tracker initialization failed: " + std::string(error.what()));
+          }
           std::cout << "VIVE sensor registers configured; stream enabled\n";
           v4l2_format format {};
           format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -308,7 +324,7 @@ namespace sof
         if (result < 0 && errno == EINTR)
           return false;
         if (result < 0 || (ready.revents & (POLLERR | POLLHUP | POLLNVAL)))
-          throw std::runtime_error("V4L2 camera disconnected / poll failed");
+          throw CaptureUnavailable("V4L2 camera disconnected / poll failed", false);
         if (result == 0)
           return false;
         v4l2_buffer buffer {};
@@ -318,7 +334,9 @@ namespace sof
         {
           if (errno == EAGAIN)
             return false;
-          throw std::runtime_error("VIDIOC_DQBUF failed");
+          if (errno == ENODEV)
+            throw CaptureUnavailable("V4L2 camera disconnected", false);
+          throw std::runtime_error("VIDIOC_DQBUF failed: " + std::string(std::strerror(errno)));
         }
         if (buffer.index >= buffers_.size())
           throw std::runtime_error("V4L2 returned an invalid buffer index");
@@ -377,5 +395,69 @@ namespace sof
   std::unique_ptr<Capture> open_capture()
   {
     return std::make_unique<V4l2>();
+  }
+
+  void wait_for_capture_device(std::stop_token stop, bool new_arrival_required)
+  {
+    const int socket =
+      ::socket(AF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, NETLINK_KOBJECT_UEVENT);
+    if (socket < 0)
+      throw std::runtime_error("Cannot subscribe to Linux device events: " + std::string(std::strerror(errno)));
+
+    struct Socket
+    {
+      int value;
+
+      ~Socket()
+      {
+        close(value);
+      }
+    } owner { socket };
+
+    sockaddr_nl address {};
+    address.nl_family = AF_NETLINK;
+    address.nl_pid = static_cast<std::uint32_t>(getpid());
+    address.nl_groups = 1;
+    if (bind(socket, reinterpret_cast<sockaddr*>(&address), sizeof(address)) < 0)
+      throw std::runtime_error("Cannot subscribe to Linux device events: " + std::string(std::strerror(errno)));
+
+    auto present = [] {
+      std::error_code error;
+      const std::filesystem::directory_iterator entries("/sys/class/video4linux", error);
+      if (error)
+        return false;
+      for (const auto& entry : entries)
+      {
+        if (is_vive_video_node(entry.path()) && std::filesystem::exists(std::filesystem::path { "/dev" } / entry.path().filename()))
+          return true;
+      }
+      return false;
+    };
+    auto settled_present = [&] {
+      if (!present())
+        return false;
+      // devtmpfs publishes the node before udev finishes applying its access
+      // rules, and keeps a removed node briefly. Settle before open().
+      poll(nullptr, 0, 500);
+      return present();
+    };
+    std::array<char, 4096> event {};
+    if (!new_arrival_required && settled_present())
+      return;
+    while (!stop.stop_requested())
+    {
+      pollfd ready { socket, POLLIN, 0 };
+      const int result = poll(&ready, 1, 200);
+      if (result < 0 && errno != EINTR)
+        throw std::runtime_error("Linux device notification failed: " + std::string(std::strerror(errno)));
+      if (result > 0)
+      {
+        while (recv(socket, event.data(), event.size(), 0) > 0)
+        {
+        }
+        if (settled_present())
+          return;
+      }
+    }
   }
 }  // namespace sof

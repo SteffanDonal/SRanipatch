@@ -146,20 +146,43 @@ namespace
       }
       sof::LatestFrame latest;
       std::atomic<std::uint64_t> captured {};
+      std::atomic<bool> capture_connected {};
       std::atomic<bool> capture_fault {};
       std::mutex error_mutex;
       std::string capture_error;
       std::jthread capture([&](std::stop_token stop) {
         try
         {
-          auto camera = sof::open_capture();
-          sof::Frame frame;
           while (!stop.stop_requested())
           {
-            if (camera->read(frame, stop))
+            try
             {
-              captured.fetch_add(1, std::memory_order_relaxed);
-              latest.push(frame);
+              auto camera = sof::open_capture();
+              capture_connected.store(true, std::memory_order_release);
+              std::cout << "Camera connected\n";
+              sof::Frame frame;
+              auto last_frame_time = sof::monotonic_ns();
+              while (!stop.stop_requested())
+              {
+                if (camera->read(frame, stop))
+                {
+                  last_frame_time = sof::monotonic_ns();
+                  captured.fetch_add(1, std::memory_order_relaxed);
+                  latest.push(frame);
+                }
+                if (sof::monotonic_ns() - last_frame_time > 5'000'000'000ULL)
+                  throw sof::CaptureUnavailable(
+                    "Camera has not delivered a valid frame for five seconds"
+                  );
+              }
+            }
+            catch (const sof::CaptureUnavailable& error)
+            {
+              capture_connected.store(false, std::memory_order_release);
+              std::cerr << "Camera unavailable: " << error.what() << "; waiting for USB device\n";
+              sof::wait_for_capture_device(stop, error.new_arrival_required());
+              if (!stop.stop_requested())
+                std::cout << "VIVE Facial Tracker detected; reconnecting\n";
             }
           }
         }
@@ -177,7 +200,6 @@ namespace
       std::array<float, sof::max_parameters> values {};
       std::uint64_t last_sequence {}, previous_captured {}, previous_inferred {};
       auto rate_time = sof::monotonic_ns();
-      auto last_frame_time = rate_time;
       std::uint64_t publish_time {};
       std::uint64_t preview_time {};
       const auto stop_at =
@@ -191,7 +213,6 @@ namespace
         }
         if (latest.pop(frame, capture.get_stop_token()))
         {
-          last_frame_time = sof::monotonic_ns();
           if (frame.sequence > last_sequence + 1)
             status.frames_skipped += frame.sequence - last_sequence - 1;
           last_sequence = frame.sequence;
@@ -227,8 +248,6 @@ namespace
             ++status.frames_skipped;
         }
         const auto now = sof::monotonic_ns();
-        if (now - last_frame_time > 5'000'000'000ULL)
-          throw std::runtime_error("Camera has not delivered a frame for five seconds");
         status.frames_captured = captured.load(std::memory_order_relaxed);
         if (now - rate_time >= 1'000'000'000ULL)
         {
@@ -243,7 +262,10 @@ namespace
                     << " fps (" << status.inference_ms << " ms), " << status.frames_captured
                     << " frames\n";
         }
-        status.state = controls.paused ? sof::ServerState::paused : sof::ServerState::running;
+        if (!capture_connected.load(std::memory_order_acquire))
+          status.state = sof::ServerState::waiting_for_camera;
+        else
+          status.state = controls.paused ? sof::ServerState::paused : sof::ServerState::running;
         status.osc_enabled = inference ? controls.osc_enabled : 0U;
         status.applied_revision = controls.revision;
         if (now - publish_time >= 33'000'000ULL)

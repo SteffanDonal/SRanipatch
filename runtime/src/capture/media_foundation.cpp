@@ -2,6 +2,7 @@
 #include "sof/vive_tracker.hpp"
 
 #include <windows.h>
+#include <cfgmgr32.h>
 #include <dshow.h>
 #include <ks.h>
 #include <ksmedia.h>
@@ -15,6 +16,7 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cwchar>
 #include <cwctype>
 #include <iomanip>
 #include <iostream>
@@ -68,6 +70,74 @@ namespace sof
       const auto identity = normalized(path);
       return identity.find(L"vid_0bb4&pid_0321") != std::wstring::npos;
     }
+
+    bool capture_device_present()
+    {
+      ULONG length {};
+      if (CM_Get_Device_Interface_List_SizeW(&length, const_cast<GUID*>(&KSCATEGORY_VIDEO_CAMERA), nullptr,
+            CM_GET_DEVICE_INTERFACE_LIST_PRESENT)
+          != CR_SUCCESS
+        || length < 2)
+        return false;
+      std::vector<wchar_t> interfaces(length);
+      if (CM_Get_Device_Interface_ListW(const_cast<GUID*>(&KSCATEGORY_VIDEO_CAMERA), nullptr,
+            interfaces.data(), length,
+            CM_GET_DEVICE_INTERFACE_LIST_PRESENT)
+        != CR_SUCCESS)
+        return false;
+      for (const wchar_t* path = interfaces.data(); *path; path += std::wcslen(path) + 1)
+        if (is_vive(path))
+          return true;
+      return false;
+    }
+
+    class DeviceArrival
+    {
+      std::mutex mutex_;
+      std::condition_variable_any changed_;
+      HCMNOTIFICATION notification_ {};
+      bool signaled_ {};
+
+      static DWORD CALLBACK notify(HCMNOTIFICATION, PVOID context, CM_NOTIFY_ACTION action,
+        PCM_NOTIFY_EVENT_DATA data, DWORD)
+      {
+        if (action == CM_NOTIFY_ACTION_DEVICEINTERFACEARRIVAL && data && is_vive(data->u.DeviceInterface.SymbolicLink))
+        {
+          auto& self = *static_cast<DeviceArrival*>(context);
+          {
+            std::lock_guard lock(self.mutex_);
+            self.signaled_ = true;
+          }
+          self.changed_.notify_all();
+        }
+        return ERROR_SUCCESS;
+      }
+
+    public:
+      DeviceArrival()
+      {
+        CM_NOTIFY_FILTER filter {};
+        filter.cbSize = sizeof(filter);
+        filter.FilterType = CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE;
+        filter.u.DeviceInterface.ClassGuid = KSCATEGORY_VIDEO_CAMERA;
+        if (CM_Register_Notification(&filter, this, notify, &notification_) != CR_SUCCESS)
+          throw std::runtime_error("Cannot subscribe to Windows camera device notifications");
+      }
+
+      ~DeviceArrival()
+      {
+        if (notification_)
+          CM_Unregister_Notification(notification_);
+      }
+
+      void wait(std::stop_token stop, bool new_arrival_required)
+      {
+        if (!new_arrival_required && capture_device_present())
+          return;
+        std::unique_lock lock(mutex_);
+        changed_.wait(lock, stop, [this] { return signaled_; });
+      }
+    };
 
     constexpr GUID vive_extension_guid {
       0x2ccb0bda, 0x6331, 0x4fdb, { 0x85, 0x0e, 0x79, 0x05, 0x4d, 0xbd, 0x56, 0x71 }
@@ -251,7 +321,8 @@ namespace sof
         const bool has_device_time =
           sample && SUCCEEDED(sample->GetUINT64(MFSampleExtension_DeviceTimestamp, &device_time)) && device_time <= UINT64_MAX / 100;
         const auto capture_time = has_device_time ? device_time * 100 : arrival;
-        const bool plausible = has_device_time && capture_time <= arrival && arrival - capture_time < 60'000'000'000ULL;
+        const bool plausible =
+          has_device_time && capture_time <= arrival && arrival - capture_time < 60'000'000'000ULL;
         {
           std::lock_guard lock(state->mutex);
           state->result = result;
@@ -387,6 +458,8 @@ namespace sof
               index = i;
               ++matches;
             }
+          if (matches == 0)
+            throw CaptureUnavailable("VIVE Facial Tracker USB 0BB4:0321 was not found", false);
           if (matches != 1)
             throw std::runtime_error("Expected exactly one VIVE Facial Tracker (USB 0BB4:0321)");
           const auto path = attribute_string(devices.items[index],
@@ -394,14 +467,19 @@ namespace sof
           std::wcout << L"Opening "
                      << attribute_string(devices.items[index], MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME)
                      << L" (USB 0BB4:0321)\n";
-          check(devices.items[index]->SetUINT32(
-                  MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_MAX_BUFFERS, 1
-                ),
+          check(devices.items[index]->SetUINT32(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_MAX_BUFFERS, 1),
             "Limit capture source buffers");
           check(devices.items[index]->ActivateObject(IID_PPV_ARGS(&source_)), "Activate camera");
-          tracker_ = std::make_unique<WindowsTrackerExtension>(source_.Get(), path);
-          tracker_initialized_ = true;
-          enable_vive_tracker(*tracker_);
+          try
+          {
+            tracker_ = std::make_unique<WindowsTrackerExtension>(source_.Get(), path);
+            tracker_initialized_ = true;
+            enable_vive_tracker(*tracker_);
+          }
+          catch (const std::exception& error)
+          {
+            throw CaptureUnavailable("VIVE tracker initialization failed: " + std::string(error.what()));
+          }
           std::cout << "VIVE sensor registers configured; stream enabled\n";
           callback_ = Microsoft::WRL::Make<ReaderCallback>();
           callback_->state = state_;
@@ -482,7 +560,8 @@ namespace sof
             state_->complete = false;
             state_->sample.Reset();
           }
-          check(reader_->ReadSample(video_stream, 0, nullptr, nullptr, nullptr, nullptr), "ReadSample");
+          if (FAILED(reader_->ReadSample(video_stream, 0, nullptr, nullptr, nullptr, nullptr)))
+            throw CaptureUnavailable("Media Foundation cannot request a camera sample", false);
           pending_ = true;
         }
         ComPtr<IMFSample> sample;
@@ -493,9 +572,10 @@ namespace sof
                 [this] { return state_->complete; }))
             return false;
           pending_ = false;
-          check(state_->result, "Camera sample");
-          if (state_->flags & (MF_SOURCE_READERF_ERROR | MF_SOURCE_READERF_ENDOFSTREAM | MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED))
-            throw std::runtime_error("Camera disconnected or changed format");
+          if (FAILED(state_->result) || (state_->flags & (MF_SOURCE_READERF_ERROR | MF_SOURCE_READERF_ENDOFSTREAM)))
+            throw CaptureUnavailable("Media Foundation camera disconnected", false);
+          if (state_->flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
+            throw std::runtime_error("Media Foundation camera changed format");
           sample = state_->sample;
           frame.timestamp_ns = state_->timestamp_ns;
           device_timestamp = state_->device_timestamp;
@@ -567,5 +647,11 @@ namespace sof
   std::unique_ptr<Capture> open_capture()
   {
     return std::make_unique<MediaFoundation>();
+  }
+
+  void wait_for_capture_device(std::stop_token stop, bool new_arrival_required)
+  {
+    DeviceArrival arrival;
+    arrival.wait(stop, new_arrival_required);
   }
 }  // namespace sof

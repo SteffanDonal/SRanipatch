@@ -114,7 +114,7 @@ if(SOF_BUILD_SERVER)
     if(WIN32)
         target_link_libraries(
             sof_capture
-            PRIVATE mfplat mfreadwrite mfuuid mf ole32 strmiids ksuser
+            PRIVATE mfplat mfreadwrite mfuuid mf ole32 strmiids ksuser cfgmgr32
         )
     endif()
     sof_target(sof-server)
