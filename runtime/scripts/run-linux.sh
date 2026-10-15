@@ -33,6 +33,10 @@ if [ ! -x "$server" ] || [ ! -x "$client" ]; then
     echo "Build sof-server and sof-client in build/linux-release first" >&2
     exit 1
 fi
+if ! command -v taskset >/dev/null 2>&1; then
+    echo "taskset is required to pin inference to the performance CPU cluster" >&2
+    exit 1
+fi
 
 DISPLAY=${DISPLAY:-:0}
 XDG_SESSION_TYPE=x11
@@ -41,7 +45,7 @@ export XDG_SESSION_TYPE
 unset WAYLAND_DISPLAY
 
 cd "$root"
-"$server" --model ../assets/models/lip_model.mnn &
+taskset -c 2-4 "$server" --model ../assets/models/lip_model.mnn &
 server_pid=$!
 "$client" &
 client_pid=$!
