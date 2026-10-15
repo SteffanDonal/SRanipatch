@@ -151,13 +151,47 @@ namespace sof
       std::uint32_t width_ {}, height_ {}, stride_ {};
       std::uint64_t sequence_ {};
       std::uint64_t dropped_ {};
+      std::uint64_t stale_ {};
       bool streaming_ {};
+      bool timestamp_reported_ {};
 
       void dropped_frame()
       {
         ++dropped_;
         if (dropped_ == 1 || dropped_ % capture_fps == 0)
           std::cerr << "V4L2: discarded " << dropped_ << " invalid or incomplete frame(s)\n";
+      }
+
+      void stale_frames(std::uint64_t count)
+      {
+        stale_ += count;
+        if (stale_ == count || stale_ % capture_fps < count)
+          std::cerr << "V4L2: drained " << stale_ << " stale frame(s)\n";
+      }
+
+      std::uint64_t capture_timestamp(const v4l2_buffer& buffer)
+      {
+        const auto now = monotonic_ns();
+        const auto timestamp_type = buffer.flags & V4L2_BUF_FLAG_TIMESTAMP_MASK;
+        const bool monotonic = timestamp_type == V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+        const auto seconds = static_cast<std::uint64_t>(buffer.timestamp.tv_sec);
+        const auto microseconds = static_cast<std::uint64_t>(buffer.timestamp.tv_usec);
+        const auto timestamp = seconds * 1'000'000'000ULL + microseconds * 1'000ULL;
+        const bool plausible = timestamp && timestamp <= now && now - timestamp < 60'000'000'000ULL;
+        if (!timestamp_reported_)
+        {
+          const auto source = (buffer.flags & V4L2_BUF_FLAG_TSTAMP_SRC_MASK) == V4L2_BUF_FLAG_TSTAMP_SRC_SOE
+            ? "start of exposure"
+            : "end of frame";
+          if (monotonic && plausible)
+            std::cout << "V4L2 driver timestamps: monotonic, " << source
+                      << "; first frame age " << static_cast<double>(now - timestamp) / 1.0e6
+                      << " ms\n";
+          else
+            std::cerr << "V4L2 driver timestamps are unavailable or incompatible; using dequeue time\n";
+          timestamp_reported_ = true;
+        }
+        return monotonic && plausible ? timestamp : now;
       }
 
       void close_device() noexcept
@@ -228,7 +262,7 @@ namespace sof
           if (!interval.numerator || interval.denominator != capture_fps * interval.numerator)
             throw std::runtime_error("VIVE camera did not accept 60 fps");
           v4l2_requestbuffers request {};
-          request.count = 4;
+          request.count = 2;
           request.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
           request.memory = V4L2_MEMORY_MMAP;
           checked_ioctl(fd_, VIDIOC_REQBUFS, &request, "VIDIOC_REQBUFS");
@@ -288,8 +322,34 @@ namespace sof
         }
         if (buffer.index >= buffers_.size())
           throw std::runtime_error("V4L2 returned an invalid buffer index");
+        std::uint64_t drained {};
+        while (drained + 1 < buffers_.size())
+        {
+          pollfd newer { fd_, POLLIN, 0 };
+          const int available = poll(&newer, 1, 0);
+          if (available <= 0 || !(newer.revents & POLLIN))
+            break;
+          v4l2_buffer next {};
+          next.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+          next.memory = V4L2_MEMORY_MMAP;
+          if (call_ioctl(fd_, VIDIOC_DQBUF, &next) < 0)
+          {
+            if (errno == EAGAIN)
+              break;
+            checked_ioctl(fd_, VIDIOC_QBUF, &buffer, "VIDIOC_QBUF");
+            throw std::runtime_error("VIDIOC_DQBUF while draining failed");
+          }
+          checked_ioctl(fd_, VIDIOC_QBUF, &buffer, "VIDIOC_QBUF");
+          buffer = next;
+          if (buffer.index >= buffers_.size())
+            throw std::runtime_error("V4L2 returned an invalid buffer index");
+          ++drained;
+        }
+        if (drained)
+          stale_frames(drained);
         const auto needed = static_cast<std::size_t>(height_ - 1) * stride_ + width_ * 2;
-        frame.sequence = ++sequence_;
+        sequence_ += drained + 1;
+        frame.sequence = sequence_;
         if (buffer.bytesused < needed || buffer.bytesused > buffers_[buffer.index].size || (buffer.flags & V4L2_BUF_FLAG_ERROR))
         {
           dropped_frame();
@@ -300,7 +360,7 @@ namespace sof
         {
           frame.width = width_;
           frame.height = height_;
-          frame.timestamp_ns = monotonic_ns();
+          frame.timestamp_ns = capture_timestamp(buffer);
           copy_yuyv_luma(static_cast<const std::uint8_t*>(buffers_[buffer.index].data), stride_, frame);
         }
         catch (...)

@@ -234,6 +234,7 @@ namespace sof
       bool complete {};
       bool flushed {};
       std::uint64_t timestamp_ns {};
+      bool device_timestamp {};
     };
 
     class ReaderCallback final
@@ -245,12 +246,19 @@ namespace sof
 
       STDMETHODIMP OnReadSample(HRESULT result, DWORD, DWORD flags, LONGLONG, IMFSample* sample) override
       {
+        const auto arrival = monotonic_ns();
+        UINT64 device_time {};
+        const bool has_device_time =
+          sample && SUCCEEDED(sample->GetUINT64(MFSampleExtension_DeviceTimestamp, &device_time)) && device_time <= UINT64_MAX / 100;
+        const auto capture_time = has_device_time ? device_time * 100 : arrival;
+        const bool plausible = has_device_time && capture_time <= arrival && arrival - capture_time < 60'000'000'000ULL;
         {
           std::lock_guard lock(state->mutex);
           state->result = result;
           state->flags = flags;
           state->sample = sample;
-          state->timestamp_ns = monotonic_ns();
+          state->timestamp_ns = plausible ? capture_time : arrival;
+          state->device_timestamp = plausible;
           state->complete = true;
         }
         state->ready.notify_one();
@@ -298,6 +306,8 @@ namespace sof
       LONG stride_ {};
       std::uint64_t sequence_ {};
       std::uint64_t dropped_ {};
+      std::uint64_t stale_ {};
+      bool timestamp_reported_ {};
       std::unique_ptr<WindowsTrackerExtension> tracker_;
       bool tracker_initialized_ {};
 
@@ -306,6 +316,13 @@ namespace sof
         ++dropped_;
         if (dropped_ == 1 || dropped_ % capture_fps == 0)
           std::cerr << "Media Foundation: discarded " << dropped_ << " frame(s); " << reason << '\n';
+      }
+
+      void stale_frame()
+      {
+        ++stale_;
+        if (stale_ == 1 || stale_ % capture_fps == 0)
+          std::cerr << "Media Foundation: drained " << stale_ << " stale frame(s)\n";
       }
 
       void shutdown() noexcept
@@ -377,6 +394,10 @@ namespace sof
           std::wcout << L"Opening "
                      << attribute_string(devices.items[index], MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME)
                      << L" (USB 0BB4:0321)\n";
+          check(devices.items[index]->SetUINT32(
+                  MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_MAX_BUFFERS, 1
+                ),
+            "Limit capture source buffers");
           check(devices.items[index]->ActivateObject(IID_PPV_ARGS(&source_)), "Activate camera");
           tracker_ = std::make_unique<WindowsTrackerExtension>(source_.Get(), path);
           tracker_initialized_ = true;
@@ -388,6 +409,7 @@ namespace sof
           check(MFCreateAttributes(&reader_attributes, 2), "MFCreateAttributes");
           check(reader_attributes->SetUnknown(MF_SOURCE_READER_ASYNC_CALLBACK, callback_.Get()),
             "Set callback");
+          check(reader_attributes->SetUINT32(MF_LOW_LATENCY, TRUE), "Enable low-latency capture");
           check(reader_attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, FALSE),
             "Disable video conversion");
           check(reader_attributes->SetUINT32(MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN, TRUE),
@@ -464,6 +486,7 @@ namespace sof
           pending_ = true;
         }
         ComPtr<IMFSample> sample;
+        bool device_timestamp {};
         {
           std::unique_lock lock(state_->mutex);
           if (!state_->ready.wait_for(lock, stop, std::chrono::milliseconds(200),
@@ -475,12 +498,30 @@ namespace sof
             throw std::runtime_error("Camera disconnected or changed format");
           sample = state_->sample;
           frame.timestamp_ns = state_->timestamp_ns;
+          device_timestamp = state_->device_timestamp;
         }
         if (!sample)
           return false;
+        frame.sequence = ++sequence_;
+        if (!timestamp_reported_)
+        {
+          const auto now = monotonic_ns();
+          if (device_timestamp)
+            std::cout << "Media Foundation driver timestamps: QPC/MFTIME; first frame age "
+                      << static_cast<double>(now - frame.timestamp_ns) / 1.0e6 << " ms\n";
+          else
+            std::cerr << "Media Foundation driver timestamps are unavailable or incompatible; " "using callback time\n";
+          timestamp_reported_ = true;
+        }
+        constexpr auto maximum_age = 2'000'000'000ULL / capture_fps;
+        const auto now = monotonic_ns();
+        if (device_timestamp && now > frame.timestamp_ns && now - frame.timestamp_ns > maximum_age)
+        {
+          stale_frame();
+          return false;
+        }
         frame.width = width_;
         frame.height = height_;
-        frame.sequence = ++sequence_;
         ComPtr<IMFMediaBuffer> buffer;
         check(sample->ConvertToContiguousBuffer(&buffer), "Get sample buffer");
         ComPtr<IMF2DBuffer> planar;
