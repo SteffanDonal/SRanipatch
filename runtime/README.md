@@ -40,6 +40,14 @@ sof-client
 
 Run `sof-server --help` for model, OSC and IPC options. Both processes must use the same `--ipc` name. Model configuration is supplied at server startup; GUI controls apply live.
 
+The server reads OSC defaults from `~/.config/sranipal-on-frame/config.ini` on Linux, or `%APPDATA%\sranipal-on-frame\config.ini` on Windows. Command-line options override the file. Supported keys are:
+
+```ini
+osc_host=127.0.0.1
+osc_port=9000
+osc_address=/sranipal/parameters
+```
+
 Linux GUI builds include both GLFW Wayland and X11 backends. GLFW normally selects the backend from the session environment. On Steam Frame with Gamescope 3.16.28, use Gamescope's XWayland display because its native `xdg-shell` path currently does not route mouse and close events reliably. `sh scripts/run-linux.sh` selects that path, starts the lip-inference server and client together, and always stops the server when the client exits or the job is interrupted.
 
 For the VIVE Facial Tracker on Windows:

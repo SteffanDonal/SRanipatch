@@ -1,4 +1,5 @@
 #include "sof/capture.hpp"
+#include "sof/config.hpp"
 #include "sof/inference.hpp"
 #include "sof/ipc.hpp"
 #include "sof/osc.hpp"
@@ -53,6 +54,9 @@ namespace
     sof::set_text(options.config.model, "../assets/models/lip_model.mnn");
     sof::set_text(options.config.osc_host, "127.0.0.1");
     sof::set_text(options.config.osc_address, "/sranipal/parameters");
+    const auto config_path = sof::default_config_path();
+    if (sof::load_osc_config(config_path, options.config))
+      std::cout << "Loaded configuration from " << config_path << '\n';
     for (int i = 1; i < argc; ++i)
     {
       const std::string_view key(argv[i]);

@@ -1,3 +1,4 @@
+#include "sof/config.hpp"
 #include "sof/frame.hpp"
 #include "sof/ipc.hpp"
 #include "sof/osc.hpp"
@@ -6,6 +7,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -141,6 +144,36 @@ namespace
       "Latest frame was not retained");
     stop.request_stop();
     require(!latest.pop(consumer, stop.get_token()), "Stopped consumer should not wait for an empty mailbox");
+  }
+
+  void configuration()
+  {
+    const auto path = std::filesystem::temp_directory_path() / ("sof-config-" + std::to_string(sof::monotonic_ns()) + ".ini");
+
+    struct Cleanup
+    {
+      std::filesystem::path path;
+
+      ~Cleanup()
+      {
+        std::error_code error;
+        std::filesystem::remove(path, error);
+      }
+    } cleanup { path };
+
+    {
+      std::ofstream output(path);
+      output << "# OSC destination\nosc_host = 192.0.2.4\nosc_port=12345\n" "osc_address = /face/lips\n";
+    }
+    sof::Config config;
+    require(sof::load_osc_config(path, config), "Configuration file was not loaded");
+    require(std::string_view(config.osc_host.data()) == "192.0.2.4" && config.osc_port == 12345 && std::string_view(config.osc_address.data()) == "/face/lips",
+      "OSC configuration values differ");
+    {
+      std::ofstream output(path);
+      output << "unknown=value\n";
+    }
+    must_throw([&] { sof::load_osc_config(path, config); });
   }
 
   void ipc_roundtrip()
@@ -313,6 +346,7 @@ int main(int argc, char** argv)
       osc_encoding();
       udp_delivery();
       frames();
+      configuration();
       tracker_commands();
       ipc_roundtrip();
     }
