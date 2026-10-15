@@ -57,7 +57,7 @@ namespace sof
       std::array<Coordinate, 100> x_ {}, y_ {};
 
     public:
-      explicit Mnn(const Config& config)
+      Mnn(const Config& config, InferencePrecision precision)
       {
         interpreter_.reset(MNN::Interpreter::createFromFile(config.model.data()));
         if (!interpreter_)
@@ -66,7 +66,9 @@ namespace sof
         schedule.type = MNN_FORWARD_CPU;
         schedule.numThread = static_cast<int>(config.threads);
         MNN::BackendConfig backend;
-        backend.precision = MNN::BackendConfig::Precision_Normal;
+        backend.precision = precision == InferencePrecision::low
+          ? MNN::BackendConfig::Precision_Low
+          : MNN::BackendConfig::Precision_Normal;
         schedule.backendConfig = &backend;
         session_ = interpreter_->createSession(schedule);
         if (!session_)
@@ -193,8 +195,8 @@ namespace sof
     };
   }  // namespace
 
-  std::unique_ptr<Inference> open_lip_mnn(const Config& config)
+  std::unique_ptr<Inference> open_lip_mnn(const Config& config, InferencePrecision precision)
   {
-    return std::make_unique<Mnn>(config);
+    return std::make_unique<Mnn>(config, precision);
   }
 }  // namespace sof

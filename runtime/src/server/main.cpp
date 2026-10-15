@@ -15,6 +15,17 @@
 
 namespace
 {
+#if defined(__aarch64__) || defined(_M_ARM64)
+  constexpr auto default_precision = sof::InferencePrecision::low;
+#else
+  constexpr auto default_precision = sof::InferencePrecision::normal;
+#endif
+
+  constexpr std::string_view precision_name(sof::InferencePrecision precision)
+  {
+    return precision == sof::InferencePrecision::low ? "low" : "normal";
+  }
+
   volatile std::sig_atomic_t interrupted = 0;
 
   void interrupt(int)
@@ -25,6 +36,7 @@ namespace
   struct Options
   {
     sof::Config config;
+    sof::InferencePrecision precision { default_precision };
     std::string ipc { "sranipal" };
     bool help {};
     bool capture_only {};
@@ -81,6 +93,15 @@ namespace
         options.seconds = number(value, 1, 86400);
       else if (key == "--threads")
         options.config.threads = number(value, 1, 64);
+      else if (key == "--precision")
+      {
+        if (value == "normal")
+          options.precision = sof::InferencePrecision::normal;
+        else if (value == "low")
+          options.precision = sof::InferencePrecision::low;
+        else
+          throw std::runtime_error("Precision must be normal or low");
+      }
       else if (key == "--osc-host")
         argument_text(options.config.osc_host, value);
       else if (key == "--osc-port")
@@ -95,7 +116,9 @@ namespace
 
   void usage()
   {
-    std::cout << "sof-server [options]\n" "  --capture-only    Capture and preview without inference or OSC\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --seconds N       Stop after N seconds (optional)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
+    std::cout << "sof-server [options]\n" "  --capture-only    Capture and preview without inference or OSC\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --seconds N       Stop after N seconds (optional)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
+              << precision_name(default_precision)
+              << ")\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
   }
 
   int serve(const Options& options)
@@ -115,7 +138,8 @@ namespace
       std::unique_ptr<sof::OscSender> osc;
       if (!options.capture_only)
       {
-        inference = sof::open_lip_mnn(options.config);
+        inference = sof::open_lip_mnn(options.config, options.precision);
+        std::cout << "MNN CPU precision: " << precision_name(options.precision) << '\n';
         osc = std::make_unique<sof::OscSender>(options.config.osc_host.data(),
           static_cast<std::uint16_t>(options.config.osc_port),
           options.config.osc_address.data());

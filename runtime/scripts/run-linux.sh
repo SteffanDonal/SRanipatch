@@ -45,7 +45,7 @@ export XDG_SESSION_TYPE
 unset WAYLAND_DISPLAY
 
 cd "$root"
-taskset -c 2-4 "$server" --model ../assets/models/lip_model.mnn &
+taskset -c 2-4 "$server" --model ../assets/models/lip_model.mnn "$@" &
 server_pid=$!
 "$client" &
 client_pid=$!
