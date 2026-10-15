@@ -10,7 +10,7 @@
 namespace sof
 {
   inline constexpr std::uint32_t protocol_magic = 0x534F4631;
-  inline constexpr std::uint32_t protocol_version = 4;
+  inline constexpr std::uint32_t protocol_version = 5;
   inline constexpr std::size_t max_parameters = 128;
   inline constexpr std::uint32_t capture_width = 400;
   inline constexpr std::uint32_t capture_height = 400;
@@ -90,7 +90,7 @@ namespace sof
   {
     std::uint64_t sequence {};
     std::uint64_t timestamp_ns {};
-    std::array<std::uint8_t, capture_width * capture_height * 3> rgb {};
+    std::array<std::uint8_t, capture_width * capture_height> luma {};
   };
 
   struct SharedBlock
@@ -109,7 +109,7 @@ namespace sof
   static_assert(sizeof(Parameter) == 52);
   static_assert(sizeof(Config) == 464);
   static_assert(sizeof(Status) == 7464);
-  static_assert(sizeof(SharedBlock) == 487512);
+  static_assert(sizeof(SharedBlock) == 167512);
   static_assert(offsetof(SharedBlock, status) == 16);
   static_assert(offsetof(SharedBlock, controls) == 7480);
   static_assert(offsetof(SharedBlock, preview) == 7496);

@@ -14,7 +14,7 @@ namespace sof
     std::uint32_t height {};
     std::uint64_t sequence {};
     std::uint64_t timestamp_ns {};
-    std::vector<std::uint8_t> rgb;
+    std::vector<std::uint8_t> luma;
   };
 
   // Producer and consumer recycle buffers by swapping; slow inference skips old frames.
@@ -31,5 +31,5 @@ namespace sof
     bool pending_ {};
   };
 
-  void yuyv_luma_to_rgb(const std::uint8_t* source, std::ptrdiff_t stride, Frame& frame);
+  void copy_yuyv_luma(const std::uint8_t* source, std::ptrdiff_t stride, Frame& frame);
 }  // namespace sof

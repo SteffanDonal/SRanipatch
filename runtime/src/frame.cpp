@@ -26,20 +26,17 @@ namespace sof
     return true;
   }
 
-  void yuyv_luma_to_rgb(const std::uint8_t* source, std::ptrdiff_t stride, Frame& frame)
+  void copy_yuyv_luma(const std::uint8_t* source, std::ptrdiff_t stride, Frame& frame)
   {
     if (!frame.width || !frame.height || (stride >= 0 ? stride : -stride) < frame.width * 2)
       throw std::runtime_error("Invalid YUYV luminance row stride");
-    frame.rgb.resize(static_cast<std::size_t>(frame.width) * frame.height * 3);
+    frame.luma.resize(static_cast<std::size_t>(frame.width) * frame.height);
     for (std::uint32_t y = 0; y < frame.height; ++y)
     {
       const auto* row = source + static_cast<std::ptrdiff_t>(y) * stride;
-      auto* dest = frame.rgb.data() + static_cast<std::size_t>(y) * frame.width * 3;
+      auto* dest = frame.luma.data() + static_cast<std::size_t>(y) * frame.width;
       for (std::uint32_t x = 0; x < frame.width; ++x)
-      {
-        const auto luminance = row[x * 2];
-        dest[x * 3] = dest[x * 3 + 1] = dest[x * 3 + 2] = luminance;
-      }
+        dest[x] = row[x * 2];
     }
   }
 }  // namespace sof

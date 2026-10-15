@@ -481,7 +481,6 @@ namespace sof
         frame.width = width_;
         frame.height = height_;
         frame.sequence = ++sequence_;
-        frame.rgb.resize(static_cast<std::size_t>(width_) * height_ * 3);
         ComPtr<IMFMediaBuffer> buffer;
         check(sample->ConvertToContiguousBuffer(&buffer), "Get sample buffer");
         ComPtr<IMF2DBuffer> planar;
@@ -514,7 +513,7 @@ namespace sof
           dropped_frame("invalid VIVE YUY2 stride");
           return false;
         }
-        yuyv_luma_to_rgb(data, pitch, frame);
+        copy_yuyv_luma(data, pitch, frame);
         if (is_2d)
           check(planar->Unlock2D(), "Unlock2D");
         else

@@ -128,11 +128,11 @@ namespace
     frame.height = 2;
     // Row padding must be skipped and VIVE chroma bytes ignored.
     const std::array<std::uint8_t, 12> source { 16, 128, 235, 128, 99, 99, 235, 128, 16, 128, 99, 99 };
-    sof::yuyv_luma_to_rgb(source.data(), 6, frame);
-    require(frame.rgb == std::vector<std::uint8_t> { 16, 16, 16, 235, 235, 235, 235, 235, 235, 16, 16, 16 },
+    sof::copy_yuyv_luma(source.data(), 6, frame);
+    require(frame.luma == std::vector<std::uint8_t> { 16, 235, 235, 16 },
       "VIVE luminance decoding must ignore chroma and preserve raw luminance");
-    sof::yuyv_luma_to_rgb(source.data() + 6, -6, frame);
-    require(frame.rgb[0] == 235 && frame.rgb[6] == 16, "Negative luminance row stride is wrong");
+    sof::copy_yuyv_luma(source.data() + 6, -6, frame);
+    require(frame.luma[0] == 235 && frame.luma[2] == 16, "Negative luminance row stride is wrong");
     sof::LatestFrame latest;
     frame.sequence = 1;
     latest.push(frame);
@@ -200,10 +200,10 @@ namespace
     image.width = sof::capture_width;
     image.height = sof::capture_height;
     image.sequence = 10;
-    image.rgb.assign(static_cast<std::size_t>(image.width) * image.height * 3, 123);
+    image.luma.assign(static_cast<std::size_t>(image.width) * image.height, 123);
     require(server->publish_frame(image), "Preview publication failed");
     sof::Frame received_frame;
-    require(client.read_frame(received_frame) && received_frame.rgb == image.rgb && received_frame.sequence == 10,
+    require(client.read_frame(received_frame) && received_frame.luma == image.luma && received_frame.sequence == 10,
       "Mapped preview pixels differ");
     require(!client.read_frame(received_frame), "Unchanged preview must not be copied again");
     server.reset();

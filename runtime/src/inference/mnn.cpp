@@ -143,8 +143,8 @@ namespace sof
 
       std::uint32_t run(const Frame& frame, std::array<Parameter, max_parameters>& output) override
       {
-        if (frame.width != capture_width || frame.height != capture_height || frame.rgb.size() != static_cast<std::size_t>(capture_width) * capture_height * 3)
-          throw std::runtime_error("Lip inference requires a 400x400 packed stereo RGB frame");
+        if (frame.width != capture_width || frame.height != capture_height || frame.luma.size() != static_cast<std::size_t>(capture_width) * capture_height)
+          throw std::runtime_error("Lip inference requires a 400x400 packed stereo luminance frame");
         auto* dest = input_host_->host<float>();
         constexpr std::size_t plane = 100 * 100;
         for (std::size_t camera = 0; camera < 2; ++camera)
@@ -158,7 +158,7 @@ namespace sof
               const auto cx = x_[x];
               const auto pixel = [&](std::uint32_t px, std::uint32_t py) {
                 return static_cast<float>(
-                  frame.rgb[(static_cast<std::size_t>(py) * frame.width + x_offset + px) * 3]
+                  frame.luma[static_cast<std::size_t>(py) * frame.width + x_offset + px]
                 );
               };
               const float top =

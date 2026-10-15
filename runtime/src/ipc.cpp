@@ -161,8 +161,21 @@ namespace sof
         throw std::runtime_error("Cannot inspect shared memory");
       if (info.st_size != static_cast<off_t>(sizeof(SharedBlock)))
       {
-        if (!server || info.st_size != 0)
-          throw std::runtime_error("Shared-memory size mismatch; choose a new IPC name");
+        if (!server)
+          throw std::runtime_error("Shared-memory size mismatch; use matching client/server builds");
+        if (info.st_size != 0)
+        {
+          // A protocol upgrade can change the block size. Replace the named
+          // region while stale clients retain a safe handle to the old one.
+          if (shm_unlink(base.c_str()) < 0)
+          {
+            throw std::runtime_error("Cannot replace obsolete shared memory");
+          }
+          close(impl_->fd);
+          impl_->fd = shm_open(base.c_str(), O_RDWR | O_CLOEXEC | O_CREAT | O_EXCL, 0600);
+          if (impl_->fd < 0 || !impl_->lock(true))
+            throw std::runtime_error("Cannot create replacement shared memory");
+        }
         if (ftruncate(impl_->fd, static_cast<off_t>(sizeof(SharedBlock))) < 0)
           throw std::runtime_error("Cannot size shared memory");
       }
@@ -227,15 +240,15 @@ namespace sof
 
   bool SharedMemory::publish_frame(const Frame& frame)
   {
-    if (frame.width != capture_width || frame.height != capture_height || frame.rgb.size() != static_cast<std::size_t>(capture_width) * capture_height * 3)
-      throw std::runtime_error("Preview is not a 400x400 RGB VIVE frame");
+    if (frame.width != capture_width || frame.height != capture_height || frame.luma.size() != static_cast<std::size_t>(capture_width) * capture_height)
+      throw std::runtime_error("Preview is not a 400x400 luminance VIVE frame");
     if (!impl_->lock())
       return false;
     Impl::Guard guard { *impl_ };
     impl_->validate();
     auto& preview = impl_->block->preview;
     preview.timestamp_ns = frame.timestamp_ns;
-    std::memcpy(preview.rgb.data(), frame.rgb.data(), preview.rgb.size());
+    std::memcpy(preview.luma.data(), frame.luma.data(), preview.luma.size());
     preview.sequence = frame.sequence;
     return true;
   }
@@ -252,8 +265,8 @@ namespace sof
     frame.width = capture_width;
     frame.height = capture_height;
     frame.timestamp_ns = preview.timestamp_ns;
-    frame.rgb.resize(preview.rgb.size());
-    std::memcpy(frame.rgb.data(), preview.rgb.data(), preview.rgb.size());
+    frame.luma.resize(preview.luma.size());
+    std::memcpy(frame.luma.data(), preview.luma.data(), preview.luma.size());
     frame.sequence = preview.sequence;
     return true;
   }

@@ -301,7 +301,7 @@ namespace sof
           frame.width = width_;
           frame.height = height_;
           frame.timestamp_ns = monotonic_ns();
-          yuyv_luma_to_rgb(static_cast<const std::uint8_t*>(buffers_[buffer.index].data), stride_, frame);
+          copy_yuyv_luma(static_cast<const std::uint8_t*>(buffers_[buffer.index].data), stride_, frame);
         }
         catch (...)
         {

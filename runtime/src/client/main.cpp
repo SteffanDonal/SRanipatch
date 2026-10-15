@@ -105,6 +105,10 @@ namespace
     constexpr GLint clamp_to_edge = 0x812F;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp_to_edge);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp_to_edge);
+    constexpr GLenum texture_swizzle_green = 0x8E43;
+    constexpr GLenum texture_swizzle_blue = 0x8E44;
+    glTexParameteri(GL_TEXTURE_2D, texture_swizzle_green, GL_RED);
+    glTexParameteri(GL_TEXTURE_2D, texture_swizzle_blue, GL_RED);
     std::uint32_t texture_width {}, texture_height {};
     int camera_view {};
     while (!interrupted && !glfwWindowShouldClose(window))
@@ -153,14 +157,15 @@ namespace
             {
               texture_width = preview.width;
               texture_height = preview.height;
-              glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(preview.width),
-                static_cast<GLsizei>(preview.height), 0, GL_RGB, GL_UNSIGNED_BYTE,
-                preview.rgb.data());
+              constexpr GLint red8 = 0x8229;
+              glTexImage2D(GL_TEXTURE_2D, 0, red8, static_cast<GLsizei>(preview.width),
+                static_cast<GLsizei>(preview.height), 0, GL_RED, GL_UNSIGNED_BYTE,
+                preview.luma.data());
             }
             else
               glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(preview.width),
-                static_cast<GLsizei>(preview.height), GL_RGB, GL_UNSIGNED_BYTE,
-                preview.rgb.data());
+                static_cast<GLsizei>(preview.height), GL_RED, GL_UNSIGNED_BYTE,
+                preview.luma.data());
           }
           // Windows mappings disappear when all handles close; reopen after a server exits.
           if (!fresh || status.state == sof::ServerState::fault || status.state == sof::ServerState::stopped)
@@ -202,7 +207,7 @@ namespace
         ImGui::TableNextColumn();
         ImGui::SeparatorText("Camera preview");
         ImGui::Combo("View", &camera_view, "Stereo (packed)\0Left camera\0Right camera\0");
-        if (!preview.rgb.empty())
+        if (!preview.luma.empty())
         {
           const float side = std::min(400.0F, ImGui::GetContentRegionAvail().x);
           const float left = camera_view == 2 ? 0.5F : 0.0F;

@@ -46,14 +46,13 @@ int main(int argc, char** argv)
     sof::Frame frame;
     frame.width = sof::capture_width;
     frame.height = sof::capture_height;
-    frame.rgb.resize(static_cast<std::size_t>(frame.width) * frame.height * 3);
+    frame.luma.resize(static_cast<std::size_t>(frame.width) * frame.height);
     for (std::uint32_t y = 0; y < frame.height; ++y)
     {
       for (std::uint32_t x = 0; x < frame.width; ++x)
       {
         const auto value = static_cast<std::uint8_t>((x + y * 3) % 256);
-        const auto offset = (static_cast<std::size_t>(y) * frame.width + x) * 3;
-        frame.rgb[offset] = frame.rgb[offset + 1] = frame.rgb[offset + 2] = value;
+        frame.luma[static_cast<std::size_t>(y) * frame.width + x] = value;
       }
     }
 

@@ -21,15 +21,15 @@ namespace
     return value;
   }
 
-  void save_ppm(const std::filesystem::path& path, const sof::Frame& frame)
+  void save_pgm(const std::filesystem::path& path, const sof::Frame& frame)
   {
     if (!path.parent_path().empty())
       std::filesystem::create_directories(path.parent_path());
     std::ofstream file(path, std::ios::binary);
-    file << "P6\n"
+    file << "P5\n"
          << frame.width << ' ' << frame.height << "\n255\n";
-    file.write(reinterpret_cast<const char*>(frame.rgb.data()),
-      static_cast<std::streamsize>(frame.rgb.size()));
+    file.write(reinterpret_cast<const char*>(frame.luma.data()),
+      static_cast<std::streamsize>(frame.luma.size()));
     if (!file)
       throw std::runtime_error("Cannot save captured frame");
   }
@@ -49,7 +49,7 @@ int main(int argc, char** argv)
       const std::string_view key(argv[i]);
       if (key == "--help")
       {
-        std::cout << "sof-capture [--ipc NAME] [--frames N] [--output frame.ppm]\n";
+        std::cout << "sof-capture [--ipc NAME] [--frames N] [--output frame.pgm]\n";
         return 0;
       }
       if (++i == argc)
@@ -87,8 +87,9 @@ int main(int argc, char** argv)
         first = frame.timestamp_ns;
       last = frame.timestamp_ns;
     }
-    const auto [minimum, maximum] = std::minmax_element(frame.rgb.begin(), frame.rgb.end());
-    std::cout << "Captured " << frames << " frames, " << frame.width << 'x' << frame.height << " RGB, "
+    const auto [minimum, maximum] = std::minmax_element(frame.luma.begin(), frame.luma.end());
+    std::cout << "Captured " << frames << " frames, " << frame.width << 'x' << frame.height
+              << " luminance, "
               << (last > first
                      ? static_cast<double>(frames - 1) * 1.0e9 / static_cast<double>(last - first)
                      : 0)
@@ -96,7 +97,7 @@ int main(int argc, char** argv)
               << '\n';
     if (!output.empty())
     {
-      save_ppm(output, frame);
+      save_pgm(output, frame);
       std::cout << "Saved " << output << '\n';
     }
     if (ipc)
