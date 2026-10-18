@@ -72,9 +72,9 @@ namespace
 
   void test_median_filter()
   {
-    for (const auto width : { 1, 2, 7, 31 })
+    for (const auto width : { 1, 2, 7, 31, 800 })
     {
-      for (const auto height : { 1, 2, 9, 23 })
+      for (const auto height : { 1, 2, 9, 23, 400 })
       {
         std::vector<std::uint8_t> input(static_cast<std::size_t>(width * height));
         std::vector<std::uint8_t> filtered(input.size());

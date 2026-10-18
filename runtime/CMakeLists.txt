@@ -89,6 +89,7 @@ sof_target(sof_core)
 
 if(SOF_BUILD_SERVER)
     sof_add_mnn()
+    sof_add_opencv()
     if(WIN32)
         set(capture_source src/capture/media_foundation.cpp)
     else()
@@ -109,7 +110,16 @@ if(SOF_BUILD_SERVER)
         SYSTEM
         PRIVATE "${mnn_SOURCE_DIR}/include"
     )
-    target_link_libraries(sof_inference PUBLIC sof_core PRIVATE MNN)
+    target_include_directories(
+        sof_inference
+        SYSTEM
+        PRIVATE ${sof_opencv_includes}
+    )
+    target_link_libraries(
+        sof_inference
+        PUBLIC sof_core
+        PRIVATE MNN opencv_imgproc
+    )
     sof_target(sof_inference)
     add_executable(sof-server src/server/main.cpp)
     target_link_libraries(sof-server PRIVATE sof_capture sof_inference MNN)

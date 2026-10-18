@@ -44,6 +44,80 @@ function(sof_add_mnn)
     set(mnn_SOURCE_DIR "${mnn_SOURCE_DIR}" PARENT_SCOPE)
 endfunction()
 
+function(sof_add_opencv)
+    set(sof_executable_output_path "${EXECUTABLE_OUTPUT_PATH}")
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(BUILD_LIST core,imgproc CACHE STRING "" FORCE)
+    set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(BUILD_PERF_TESTS OFF CACHE BOOL "" FORCE)
+    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(BUILD_opencv_apps OFF CACHE BOOL "" FORCE)
+    set(BUILD_JAVA OFF CACHE BOOL "" FORCE)
+    set(BUILD_opencv_python3 OFF CACHE BOOL "" FORCE)
+    set(WITH_IPP OFF CACHE BOOL "" FORCE)
+    set(WITH_OPENCL OFF CACHE BOOL "" FORCE)
+    set(WITH_ITT OFF CACHE BOOL "" FORCE)
+    foreach(
+        feature
+        AVIF
+        FFMPEG
+        GSTREAMER
+        GTK
+        JPEG
+        LAPACK
+        OPENEXR
+        OPENJPEG
+        PNG
+        TIFF
+        UNIFONT
+        V4L
+        WEBP
+        WIN32UI
+    )
+        set(WITH_${feature} OFF CACHE BOOL "" FORCE)
+    endforeach()
+    set(BUILD_WITH_STATIC_CRT OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        opencv
+        GIT_REPOSITORY https://github.com/opencv/opencv.git
+        GIT_TAG 40738fb16ceddb5fb3fea747585f7ce6abb0605b # 5.0.0
+        GIT_PROGRESS TRUE
+    )
+    FetchContent_MakeAvailable(opencv)
+    if(sof_executable_output_path)
+        set(EXECUTABLE_OUTPUT_PATH
+            "${sof_executable_output_path}"
+            CACHE PATH
+            ""
+            FORCE
+        )
+    else()
+        unset(EXECUTABLE_OUTPUT_PATH CACHE)
+    endif()
+    set_property(
+        DIRECTORY "${opencv_SOURCE_DIR}"
+        PROPERTY EXCLUDE_FROM_ALL TRUE
+    )
+    set(sof_opencv_includes
+        "${opencv_SOURCE_DIR}/modules/core/include"
+        "${opencv_SOURCE_DIR}/modules/imgproc/include"
+        "${CMAKE_BINARY_DIR}"
+        PARENT_SCOPE
+    )
+    install(
+        FILES ${opencv_SOURCE_DIR}/LICENSE
+        DESTINATION share/licenses
+        RENAME OpenCV.txt
+        COMPONENT Runtime
+    )
+    install(
+        FILES ${opencv_SOURCE_DIR}/3rdparty/zlib/LICENSE
+        DESTINATION share/licenses
+        RENAME zlib.txt
+        COMPONENT Runtime
+    )
+endfunction()
+
 function(sof_add_gui)
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
