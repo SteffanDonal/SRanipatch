@@ -47,9 +47,8 @@ def export(weights_path: Path, output_path: Path) -> None:
         helper.make_node(
             "Gemm", ["flat", "fc5_ft_weight", "fc5_ft_bias"], ["dense1"], transB=1
         ),
-        helper.make_node("Relu", ["dense1"], ["dense1_relu"]),
         helper.make_node(
-            "Gemm", ["dense1_relu", "fc6_10_weight", "fc6_10_bias"], ["dense2"], transB=1
+            "Gemm", ["dense1", "fc6_10_weight", "fc6_10_bias"], ["dense2"], transB=1
         ),
         helper.make_node("Relu", ["dense2"], ["lip_raw"]),
     ]

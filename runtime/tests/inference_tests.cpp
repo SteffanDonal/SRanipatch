@@ -99,6 +99,10 @@ int main(int argc, char** argv)
     const auto frame = argc == 3 ? read_pgm(argv[2]) : test_frame();
 
     std::array<sof::Parameter, sof::max_parameters> parameters {};
+    std::array<float, sof::lip_raw_count> raw_output {};
+    inference->run(frame, parameters, raw_output);
+    require(std::abs(raw_output[0] - 0.2056102F) < 0.0001F && std::abs(raw_output[3] - 1.1964159F) < 0.0001F && std::abs(raw_output[12] - 0.9483699F) < 0.0001F && std::abs(raw_output[24] - 2.2418664F) < 0.0001F,
+      "lip model graph output changed");
     for (int i = 0; i < 30; ++i)
       require(inference->run(frame, parameters) == 37, "unexpected lip output count");
     require(std::string_view(parameters[0].name.data()) == "jaw_right", "unexpected first output");

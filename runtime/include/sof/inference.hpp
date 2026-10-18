@@ -3,6 +3,7 @@
 #include "sof/protocol.hpp"
 
 #include <memory>
+#include <span>
 
 namespace sof
 {
@@ -16,7 +17,8 @@ namespace sof
   {
   public:
     virtual ~Inference() = default;
-    virtual std::uint32_t run(const Frame& frame, std::array<Parameter, max_parameters>& output) = 0;
+    virtual std::uint32_t run(const Frame& frame, std::array<Parameter, max_parameters>& output,
+      std::span<float> raw_output = {}) = 0;
   };
 
   std::unique_ptr<Inference> open_lip_mnn(const Config& config,

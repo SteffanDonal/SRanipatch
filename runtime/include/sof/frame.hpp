@@ -15,6 +15,7 @@ namespace sof
     std::uint64_t sequence {};
     std::uint64_t timestamp_ns {};
     std::vector<std::uint8_t> luma;
+    std::vector<std::uint8_t> yuyv;
   };
 
   // Producer and consumer recycle buffers by swapping; slow inference skips old frames.

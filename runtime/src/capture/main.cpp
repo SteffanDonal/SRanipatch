@@ -1,4 +1,5 @@
 #include "sof/capture.hpp"
+#include "sof/dataset.hpp"
 #include "sof/ipc.hpp"
 
 #include <algorithm>
@@ -43,13 +44,14 @@ int main(int argc, char** argv)
   {
     std::uint32_t frames = 120;
     std::filesystem::path output;
+    std::filesystem::path dataset;
     std::string ipc_name;
     for (int i = 1; i < argc; ++i)
     {
       const std::string_view key(argv[i]);
       if (key == "--help")
       {
-        std::cout << "sof-capture [--ipc NAME] [--frames N] [--output frame.pgm]\n";
+        std::cout << "sof-capture [--ipc NAME] [--frames N] [--dataset capture.sofdata] " "[--output frame.pgm]\n";
         return 0;
       }
       if (++i == argc)
@@ -61,6 +63,8 @@ int main(int argc, char** argv)
         ipc_name = value;
       else if (key == "--output")
         output = value;
+      else if (key == "--dataset")
+        dataset = value;
       else
         throw std::runtime_error("Unknown capture option");
     }
@@ -71,6 +75,14 @@ int main(int argc, char** argv)
     else
       ipc = std::make_unique<sof::SharedMemory>(ipc_name, sof::SharedMemory::Role::client);
     sof::Frame frame;
+    std::unique_ptr<sof::DatasetWriter> writer;
+    if (!dataset.empty())
+    {
+      writer = std::make_unique<sof::DatasetWriter>(dataset, sof::capture_width,
+        sof::capture_height,
+        sof::DatasetPixels::yuyv);
+      frame.yuyv.resize(static_cast<std::size_t>(sof::capture_width) * sof::capture_height * 2);
+    }
     std::stop_source stop;
     std::uint64_t first {}, last {};
     for (std::uint32_t i = 0; i < frames;)
@@ -86,6 +98,8 @@ int main(int argc, char** argv)
       if (i++ == 0)
         first = frame.timestamp_ns;
       last = frame.timestamp_ns;
+      if (writer)
+        writer->write(frame);
     }
     const auto [minimum, maximum] = std::minmax_element(frame.luma.begin(), frame.luma.end());
     std::cout << "Captured " << frames << " frames, " << frame.width << 'x' << frame.height
@@ -100,6 +114,8 @@ int main(int argc, char** argv)
       save_pgm(output, frame);
       std::cout << "Saved " << output << '\n';
     }
+    if (writer)
+      std::cout << "Saved " << writer->frame_count() << " frames to " << dataset << '\n';
     if (ipc)
     {
       sof::Status status;

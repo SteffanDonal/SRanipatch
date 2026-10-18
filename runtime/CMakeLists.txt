@@ -76,6 +76,7 @@ add_library(
     src/ipc.cpp
     src/osc.cpp
     src/frame.cpp
+    src/dataset.cpp
     src/config.cpp
     src/capture/vive_tracker.cpp
 )
@@ -128,6 +129,14 @@ if(SOF_BUILD_SERVER)
     target_link_libraries(sof-capture PRIVATE sof_capture)
     sof_target(sof-capture)
     install(TARGETS sof-capture RUNTIME DESTINATION bin COMPONENT Runtime)
+    add_executable(sof-replay src/replay/main.cpp)
+    target_link_libraries(sof-replay PRIVATE sof_inference MNN)
+    sof_target(sof-replay)
+    if(WIN32)
+        add_executable(sof-sranipal-replay src/replay/sranipal.cpp)
+        target_link_libraries(sof-sranipal-replay PRIVATE sof_core)
+        sof_target(sof-sranipal-replay)
+    endif()
     install(
         FILES third_party/vivefacialtracker-LICENSE.txt
         DESTINATION share/licenses

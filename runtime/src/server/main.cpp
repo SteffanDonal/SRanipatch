@@ -15,11 +15,7 @@
 
 namespace
 {
-#if defined(__aarch64__) || defined(_M_ARM64)
-  constexpr auto default_precision = sof::InferencePrecision::low;
-#else
   constexpr auto default_precision = sof::InferencePrecision::normal;
-#endif
 
   constexpr std::string_view precision_name(sof::InferencePrecision precision)
   {

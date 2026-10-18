@@ -1,5 +1,6 @@
 #include "sof/frame.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <stdexcept>
 #include <utility>
@@ -31,10 +32,13 @@ namespace sof
     if (!frame.width || !frame.height || (stride >= 0 ? stride : -stride) < frame.width * 2)
       throw std::runtime_error("Invalid YUYV luminance row stride");
     frame.luma.resize(static_cast<std::size_t>(frame.width) * frame.height);
+    frame.yuyv.resize(static_cast<std::size_t>(frame.width) * frame.height * 2);
     for (std::uint32_t y = 0; y < frame.height; ++y)
     {
       const auto* row = source + static_cast<std::ptrdiff_t>(y) * stride;
       auto* dest = frame.luma.data() + static_cast<std::size_t>(y) * frame.width;
+      std::copy_n(row, static_cast<std::size_t>(frame.width) * 2,
+        frame.yuyv.data() + static_cast<std::size_t>(y) * frame.width * 2);
       for (std::uint32_t x = 0; x < frame.width; ++x)
         dest[x] = row[x * 2];
     }

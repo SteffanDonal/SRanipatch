@@ -50,7 +50,7 @@ osc_address=/sranipal/parameters
 
 Linux GUI builds include both GLFW Wayland and X11 backends. GLFW normally selects the backend from the session environment. On Steam Frame with Gamescope 3.16.28, use Gamescope's XWayland display because its native `xdg-shell` path currently does not route mouse and close events reliably. `sh scripts/run-linux.sh` selects that path, starts the lip-inference server and client together, and always stops the server when the client exits or the job is interrupted.
 
-Arguments to `scripts/run-linux.sh` are forwarded to the server. For example, `sh scripts/run-linux.sh --precision normal` runs the ARM64 build with FP32 inference.
+Arguments to `scripts/run-linux.sh` are forwarded to the server. For example, `sh scripts/run-linux.sh --precision low` selects MNN's reduced-precision CPU path.
 
 For the VIVE Facial Tracker on Windows:
 
@@ -59,9 +59,9 @@ For the VIVE Facial Tracker on Windows:
 ./build/windows-x64/Release/sof-client.exe
 ```
 
-Capture is intentionally fixed to the VIVE Facial Tracker: both platforms locate the single USB `0BB4:0321` capture device, apply its vendor initialization sequence, and open native 400×400 YUY2/YUYV at 60 fps. There are no device or format overrides. The client displays the packed stereo image or either camera separately. `sof-capture --frames 120 --output frame.pgm` checks the same capture path without inference or a GUI. The [device protocol](https://github.com/LordOfDragons/vivefacialtracker) supports 64- and 384-byte extension payloads; capture carries raw luminance directly to inference and ignores chroma.
+Capture is intentionally fixed to the VIVE Facial Tracker: both platforms locate the single USB `0BB4:0321` capture device, apply its vendor initialization sequence, and open native 400×400 YUY2/YUYV at 60 fps. There are no device or format overrides. The client displays the packed stereo image or either camera separately. `sof-capture --frames 120 --output frame.pgm` checks the same capture path without inference or a GUI. The [device protocol](https://github.com/LordOfDragons/vivefacialtracker) supports 64- and 384-byte extension payloads; inference preserves the packed camera bytes used by SRanipal.
 
-The lip model is a fixed MNN graph with a float32 `[1,2,100,100]` stereo input and 30-value internal output. The server splits the packed frame into its left and right grayscale views, resizes each independently, scales luminance to `[0,1]`, and converts the model output to SRanipal's ordered 37 lip shapes. ARM64 uses MNN's low-precision CPU path by default; `--precision normal` restores FP32, and `--precision low` enables it explicitly on other targets. `scripts/export-lip-onnx.py` reproduces the intermediate ONNX graph from the Git LFS NPZ archive; conversion to MNN uses MNN 3.2.0's `MNNConvert`.
+The lip model is a fixed MNN graph with a float32 `[1,2,100,100]` stereo input and 30-value internal output. The server splits the packed frame into its left and right grayscale views, resizes them with SRanipal's cubic preprocessing, scales values to `[0,1]`, and converts the model output to SRanipal's ordered 37 lip shapes. FP32 inference is the default; `--precision low` trades accuracy for speed. `scripts/export-lip-onnx.py` reproduces the intermediate ONNX graph from the Git LFS NPZ archive; conversion to MNN uses MNN 3.2.0's `MNNConvert`.
 
 ## Platform boundaries
 
