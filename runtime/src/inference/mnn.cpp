@@ -9,6 +9,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <string_view>
+#include <vector>
 
 namespace sof
 {
@@ -55,6 +56,7 @@ namespace sof
       };
 
       std::array<Coordinate, 100> x_ {}, y_ {};
+      std::vector<std::uint8_t> filtered_;
 
     public:
       Mnn(const Config& config, InferencePrecision precision)
@@ -66,9 +68,8 @@ namespace sof
         schedule.type = MNN_FORWARD_CPU;
         schedule.numThread = static_cast<int>(config.threads);
         MNN::BackendConfig backend;
-        backend.precision = precision == InferencePrecision::low
-          ? MNN::BackendConfig::Precision_Low
-          : MNN::BackendConfig::Precision_Normal;
+        backend.precision = precision == InferencePrecision::low ? MNN::BackendConfig::Precision_Low
+                                                                 : MNN::BackendConfig::Precision_Normal;
         schedule.backendConfig = &backend;
         session_ = interpreter_->createSession(schedule);
         if (!session_)
@@ -87,47 +88,8 @@ namespace sof
         output_host_.reset(new MNN::Tensor(output_, MNN::Tensor::CAFFE));
         if (!input_host_ || !input_host_->host<float>() || !output_host_ || !output_host_->host<float>())
           throw std::runtime_error("MNN host tensor allocation failed");
-        constexpr std::array<std::string_view, lip_parameter_count> names {
-          "jaw_right",
-          "jaw_left",
-          "jaw_forward",
-          "jaw_open",
-          "mouth_ape_shape",
-          "mouth_upper_right",
-          "mouth_upper_left",
-          "mouth_lower_right",
-          "mouth_lower_left",
-          "mouth_upper_overturn",
-          "mouth_lower_overturn",
-          "mouth_pout",
-          "mouth_smile_right",
-          "mouth_smile_left",
-          "mouth_sad_right",
-          "mouth_sad_left",
-          "cheek_puff_right",
-          "cheek_puff_left",
-          "cheek_suck",
-          "mouth_upper_up_right",
-          "mouth_upper_up_left",
-          "mouth_lower_down_right",
-          "mouth_lower_down_left",
-          "mouth_upper_inside",
-          "mouth_lower_inside",
-          "mouth_lower_overlay",
-          "tongue_long_step_1",
-          "tongue_left",
-          "tongue_right",
-          "tongue_up",
-          "tongue_down",
-          "tongue_roll",
-          "tongue_long_step_2",
-          "tongue_up_right_morph",
-          "tongue_up_left_morph",
-          "tongue_down_right_morph",
-          "tongue_down_left_morph",
-        };
-        for (std::size_t i = 0; i < names.size(); ++i)
-          set_text(names_[i], names[i]);
+        for (std::size_t i = 0; i < lip_parameter_names.size(); ++i)
+          set_text(names_[i], lip_parameter_names[i]);
         const auto fill_coordinates = [](auto& dest, std::uint32_t source) {
           for (std::size_t i = 0; i < dest.size(); ++i)
           {
@@ -154,6 +116,9 @@ namespace sof
         {
           constexpr std::array<int, 4> cubic { -3, 19, 19, -3 };
           constexpr std::size_t stereo_width = capture_width * 2;
+          filtered_.resize(frame.yuyv.size());
+          // SRanipal filters across the stereo seam before cropping either view.
+          median_filter_5x5(frame.yuyv, filtered_, stereo_width, capture_height);
           for (std::size_t camera = 0; camera < 2; ++camera)
           {
             for (std::size_t y = 0; y < 100; ++y)
@@ -163,7 +128,7 @@ namespace sof
                 int sum {};
                 for (std::size_t ky = 0; ky < cubic.size(); ++ky)
                   for (std::size_t kx = 0; kx < cubic.size(); ++kx)
-                    sum += cubic[ky] * cubic[kx] * frame.yuyv[(y * 4 + ky) * stereo_width + camera * capture_width + x * 4 + kx];
+                    sum += cubic[ky] * cubic[kx] * filtered_[(y * 4 + ky) * stereo_width + camera * capture_width + x * 4 + kx];
                 int pixel {};
                 if (sum > 0)
                 {
@@ -190,14 +155,15 @@ namespace sof
               {
                 const auto cx = x_[x];
                 const auto pixel = [&](std::uint32_t px, std::uint32_t py) {
-                  return static_cast<float>(frame.luma[static_cast<std::size_t>(py) * frame.width + x_offset + px]);
+                  return static_cast<float>(
+                    frame.luma[static_cast<std::size_t>(py) * frame.width + x_offset + px]
+                  );
                 };
                 const float top =
                   std::lerp(pixel(cx.first, cy.first), pixel(cx.second, cy.first), cx.weight);
-                const float bottom = std::lerp(pixel(cx.first, cy.second),
-                  pixel(cx.second, cy.second), cx.weight);
-                dest[camera * plane + y * 100 + x] =
-                  std::lerp(top, bottom, cy.weight) / 255.0F;
+                const float bottom =
+                  std::lerp(pixel(cx.first, cy.second), pixel(cx.second, cy.second), cx.weight);
+                dest[camera * plane + y * 100 + x] = std::lerp(top, bottom, cy.weight) / 255.0F;
               }
             }
           }

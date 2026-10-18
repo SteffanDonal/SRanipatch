@@ -11,6 +11,8 @@ def main() -> int:
     parser.add_argument("reference", type=Path)
     parser.add_argument("candidate", type=Path)
     parser.add_argument("--prefix", default="raw_")
+    parser.add_argument("--all", action="store_true", help="compare every common value column")
+    parser.add_argument("--max-error", type=float, help="fail if any absolute error exceeds this limit")
     args = parser.parse_args()
 
     with args.reference.open(newline="") as reference_file, args.candidate.open(
@@ -18,10 +20,13 @@ def main() -> int:
     ) as candidate_file:
         reference = csv.DictReader(reference_file)
         candidate = csv.DictReader(candidate_file)
+        metadata = {"sequence", "timestamp_ns", "confidence"}
         columns = [
             name
             for name in reference.fieldnames or []
-            if name.startswith(args.prefix) and name in (candidate.fieldnames or [])
+            if name in (candidate.fieldnames or [])
+            and name not in metadata
+            and (args.all or name.startswith(args.prefix))
         ]
         if not columns:
             raise ValueError("No matching output columns")
@@ -35,10 +40,14 @@ def main() -> int:
         for reference_row, candidate_row in zip(reference, candidate, strict=True):
             if reference_row["sequence"] != candidate_row["sequence"]:
                 raise ValueError(f"Sequence mismatch at row {frames + 2}")
+            if reference_row["timestamp_ns"] != candidate_row["timestamp_ns"]:
+                raise ValueError(f"Timestamp mismatch at row {frames + 2}")
             frames += 1
             for name in columns:
                 x = float(reference_row[name])
                 y = float(candidate_row[name])
+                if not math.isfinite(x) or not math.isfinite(y):
+                    raise ValueError(f"Non-finite {name} at row {frames + 1}")
                 error = y - x
                 item = stats[name]
                 item["n"] += 1
@@ -52,6 +61,8 @@ def main() -> int:
                 item["yy"] += y * y
                 item["xy"] += x * y
 
+    if not frames:
+        raise ValueError("Replay CSVs contain no frames")
     total_n = frames * len(columns)
     total_absolute = sum(item["absolute"] for item in stats.values())
     total_square = sum(item["square"] for item in stats.values())
@@ -74,6 +85,9 @@ def main() -> int:
             f"{math.sqrt(item['square'] / n):10.8f} {item['max']:10.8f} "
             f"{item['bias'] / n:10.8f} {correlation:10.6f}"
         )
+    if args.max_error is not None and maximum > args.max_error:
+        print(f"FAIL: maximum error {maximum:.8g} exceeds {args.max_error:.8g}")
+        return 1
     return 0
 
 

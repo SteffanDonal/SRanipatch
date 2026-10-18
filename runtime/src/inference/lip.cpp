@@ -39,11 +39,9 @@ namespace sof
     maxima_[2] = 0.7F;
     smoothed_.fill(0.0F);
     smoothing_weights_.fill(0.0F);
-    calibration_tick_ = 0;
   }
 
-  std::array<float, lip_parameter_count>
-  LipPostprocessor::process(std::span<const float, lip_raw_count> raw)
+  std::array<float, lip_parameter_count> LipPostprocessor::process(std::span<const float, lip_raw_count> raw)
   {
     std::array<float, lip_parameter_count> output {};
     const bool valid = raw[0] >= validity_threshold;
@@ -81,8 +79,7 @@ namespace sof
           continue;
         center_weights_[i] += 0.001F;
         const float alpha = center_weights_[i] / (center_weights_[i] + 20.5F);
-        center_estimates_[i] =
-          std::lerp(center_estimates_[i], center_inputs[i], alpha);
+        center_estimates_[i] = std::lerp(center_estimates_[i], center_inputs[i], alpha);
         center_weights_[i] *= 1.0F - alpha;
         centers_[i] = center_estimates_[i];
       }
@@ -119,19 +116,23 @@ namespace sof
 
     if (output[30] > 0.1F)
     {
-      output[32] = output[30] + 0.2F * (output[27] + output[28]);
+      output[32] = output[30] + 0.2F + 0.2F * (output[27] + output[28]);
+      output[26] = 1.0F;
     }
     else if (output[29] > 0.2F && output[3] < 0.6F && output[26] > 0.2F)
     {
       output[32] = output[29] + 0.12F + 0.2F * (output[27] + output[28]);
+      output[26] = 1.0F;
     }
     else if (output[27] > 0.2F && output[3] < 0.6F && output[26] > 0.3F)
     {
       output[32] = output[27] + 0.12F + 0.2F * (output[29] + output[28]);
+      output[26] = 1.0F;
     }
     else if (output[28] > 0.2F && output[3] < 0.6F && output[26] > 0.3F)
     {
       output[32] = output[28] + 0.12F + 0.2F * (output[29] + output[27]);
+      output[26] = 1.0F;
     }
     else if (output[26] < 0.4F)
     {

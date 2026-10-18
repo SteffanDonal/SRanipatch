@@ -102,6 +102,7 @@ if(SOF_BUILD_SERVER)
         STATIC
         src/inference/mnn.cpp
         src/inference/lip.cpp
+        src/inference/image.cpp
     )
     target_include_directories(
         sof_inference
@@ -132,10 +133,20 @@ if(SOF_BUILD_SERVER)
     add_executable(sof-replay src/replay/main.cpp)
     target_link_libraries(sof-replay PRIVATE sof_inference MNN)
     sof_target(sof-replay)
+    add_executable(
+        sof-postprocess-replay
+        src/replay/postprocess.cpp
+        src/inference/lip.cpp
+    )
+    target_link_libraries(sof-postprocess-replay PRIVATE sof_core)
+    sof_target(sof-postprocess-replay)
     if(WIN32)
         add_executable(sof-sranipal-replay src/replay/sranipal.cpp)
         target_link_libraries(sof-sranipal-replay PRIVATE sof_core)
         sof_target(sof-sranipal-replay)
+        add_executable(sof-sranipal-final-replay src/replay/sranipal_final.cpp)
+        target_link_libraries(sof-sranipal-final-replay PRIVATE sof_core)
+        sof_target(sof-sranipal-final-replay)
     endif()
     install(
         FILES third_party/vivefacialtracker-LICENSE.txt

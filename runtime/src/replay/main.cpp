@@ -3,10 +3,13 @@
 #include "sof/lip.hpp"
 
 #include <array>
+#include <charconv>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 #include <locale>
 #include <stdexcept>
 #include <string_view>
@@ -19,6 +22,7 @@ namespace
     std::filesystem::path output;
     std::string model { "../assets/models/lip_model.mnn" };
     sof::InferencePrecision precision { sof::InferencePrecision::normal };
+    std::uint64_t frames {};
   };
 
   Options options(int argc, char** argv)
@@ -29,7 +33,7 @@ namespace
       const std::string_view key(argv[i]);
       if (key == "--help")
       {
-        std::cout << "sof-replay --dataset capture.sofdata --output values.csv " "[--model lip_model.mnn] [--precision normal|low]\n";
+        std::cout << "sof-replay --dataset capture.sofdata --output values.csv " "[--model lip_model.mnn] [--precision normal|low] [--frames N]\n";
         std::exit(0);
       }
       if (++i == argc)
@@ -41,6 +45,13 @@ namespace
         result.output = value;
       else if (key == "--model")
         result.model = value;
+      else if (key == "--frames")
+      {
+        const auto [end, error] =
+          std::from_chars(value.data(), value.data() + value.size(), result.frames);
+        if (error != std::errc {} || end != value.data() + value.size() || !result.frames)
+          throw std::runtime_error("Replay frame count must be positive");
+      }
       else if (key == "--precision")
       {
         if (value == "normal")
@@ -76,6 +87,7 @@ int main(int argc, char** argv)
       std::filesystem::create_directories(args.output.parent_path());
     std::ofstream output(args.output);
     output.imbue(std::locale::classic());
+    output << std::setprecision(std::numeric_limits<float>::max_digits10);
     if (!output)
       throw std::runtime_error("Cannot create replay output");
     output << "sequence,timestamp_ns";
@@ -100,6 +112,8 @@ int main(int argc, char** argv)
       for (std::uint32_t i = 0; i < parameter_count; ++i)
         output << ',' << parameters[i].value;
       ++count;
+      if (args.frames && count == args.frames)
+        break;
     }
     output << '\n';
     if (!output)
