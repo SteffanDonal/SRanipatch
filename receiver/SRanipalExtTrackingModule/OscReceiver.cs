@@ -8,7 +8,7 @@ namespace SRanipalExtTrackingInterface;
 internal sealed class OscReceiver : IDisposable
 {
     public const string Address = "/sranipal/parameters";
-    public const string Endpoint = "127.0.0.1:9000";
+    public static readonly IPEndPoint Endpoint = new(IPAddress.Any, 9337);
 
     private const int ParameterCount = 37;
     private readonly Socket _socket;
@@ -21,7 +21,7 @@ internal sealed class OscReceiver : IDisposable
         try
         {
             _socket.Blocking = false;
-            _socket.Bind(new IPEndPoint(IPAddress.Loopback, 9000));
+            _socket.Bind(Endpoint);
         }
         catch
         {
@@ -106,3 +106,4 @@ internal sealed class OscReceiver : IDisposable
         return offset <= packet.Length;
     }
 }
+
