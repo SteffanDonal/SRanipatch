@@ -16,6 +16,12 @@
 namespace
 {
   constexpr auto default_precision = sof::InferencePrecision::normal;
+  constexpr auto default_median = sof::MedianFilter::pseudo_separable;
+
+  constexpr std::string_view median_name(sof::MedianFilter filter)
+  {
+    return filter == sof::MedianFilter::exact ? "exact" : "pseudo-separable";
+  }
 
   constexpr std::string_view precision_name(sof::InferencePrecision precision)
   {
@@ -33,6 +39,7 @@ namespace
   {
     sof::Config config;
     sof::InferencePrecision precision { default_precision };
+    sof::MedianFilter median { default_median };
     std::string ipc { "sranipal" };
     bool help {};
     bool capture_only {};
@@ -98,6 +105,15 @@ namespace
         else
           throw std::runtime_error("Precision must be normal or low");
       }
+      else if (key == "--median")
+      {
+        if (value == "exact")
+          options.median = sof::MedianFilter::exact;
+        else if (value == "pseudo-separable")
+          options.median = sof::MedianFilter::pseudo_separable;
+        else
+          throw std::runtime_error("Median filter must be exact or pseudo-separable");
+      }
       else if (key == "--osc-host")
         argument_text(options.config.osc_host, value);
       else if (key == "--osc-port")
@@ -114,6 +130,8 @@ namespace
   {
     std::cout << "sof-server [options]\n" "  --capture-only    Capture and preview without inference or OSC\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --seconds N       Stop after N seconds (optional)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
               << precision_name(default_precision)
+              << ")\n" "  --median MODE     Median filter: exact or pseudo-separable (default "
+              << median_name(default_median)
               << ")\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
   }
 
@@ -134,8 +152,9 @@ namespace
       std::unique_ptr<sof::OscSender> osc;
       if (!options.capture_only)
       {
-        inference = sof::open_lip_mnn(options.config, options.precision);
+        inference = sof::open_lip_mnn(options.config, options.precision, options.median);
         std::cout << "MNN CPU precision: " << precision_name(options.precision) << '\n';
+        std::cout << "Median filter: " << median_name(options.median) << '\n';
         osc = std::make_unique<sof::OscSender>(options.config.osc_host.data(),
           static_cast<std::uint16_t>(options.config.osc_port),
           options.config.osc_address.data());

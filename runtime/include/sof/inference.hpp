@@ -12,6 +12,11 @@ namespace sof
     normal,
     low
   };
+  enum class MedianFilter
+  {
+    exact,
+    pseudo_separable
+  };
 
   class Inference
   {
@@ -22,5 +27,6 @@ namespace sof
   };
 
   std::unique_ptr<Inference> open_lip_mnn(const Config& config,
-    InferencePrecision precision = InferencePrecision::normal);
+    InferencePrecision precision = InferencePrecision::normal,
+    MedianFilter filter = MedianFilter::exact);
 }  // namespace sof

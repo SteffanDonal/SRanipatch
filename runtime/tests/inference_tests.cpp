@@ -78,6 +78,7 @@ namespace
       {
         std::vector<std::uint8_t> input(static_cast<std::size_t>(width * height));
         std::vector<std::uint8_t> filtered(input.size());
+        std::vector<std::uint8_t> separable(input.size()), scratch(input.size());
         std::uint32_t seed = 713;
         for (auto& value : input)
         {
@@ -86,16 +87,27 @@ namespace
         }
         sof::median_filter_5x5(input, filtered, static_cast<std::size_t>(width),
           static_cast<std::size_t>(height));
+        sof::pseudo_separable_median_5x5(input, separable, scratch, static_cast<std::size_t>(width),
+          static_cast<std::size_t>(height));
         for (int y = 0; y < height; ++y)
         {
           for (int x = 0; x < width; ++x)
           {
             std::array<std::uint8_t, 25> neighbors {};
+            std::array<std::uint8_t, 5> row_medians {};
             std::size_t i {};
             for (int dy = -2; dy <= 2; ++dy)
+            {
+              std::array<std::uint8_t, 5> row {};
               for (int dx = -2; dx <= 2; ++dx)
-                neighbors[i++] =
+                row[static_cast<std::size_t>(dx + 2)] = neighbors[i++] =
                   input[static_cast<std::size_t>(std::clamp(y + dy, 0, height - 1) * width + std::clamp(x + dx, 0, width - 1))];
+              std::sort(row.begin(), row.end());
+              row_medians[static_cast<std::size_t>(dy + 2)] = row[2];
+            }
+            std::sort(row_medians.begin(), row_medians.end());
+            require(separable[static_cast<std::size_t>(y * width + x)] == row_medians[2],
+              "separable median differs from sorted row medians with replicated borders");
             std::sort(neighbors.begin(), neighbors.end());
             require(filtered[static_cast<std::size_t>(y * width + x)] == neighbors[12],
               "median filter differs from a full 5x5 sort with replicated borders");

@@ -57,9 +57,11 @@ namespace sof
 
       std::array<Coordinate, 100> x_ {}, y_ {};
       std::vector<std::uint8_t> filtered_;
+      std::vector<std::uint8_t> filter_scratch_;
+      MedianFilter filter_;
 
     public:
-      Mnn(const Config& config, InferencePrecision precision)
+      Mnn(const Config& config, InferencePrecision precision, MedianFilter filter) : filter_(filter)
       {
         interpreter_.reset(MNN::Interpreter::createFromFile(config.model.data()));
         if (!interpreter_)
@@ -118,7 +120,16 @@ namespace sof
           constexpr std::size_t stereo_width = capture_width * 2;
           filtered_.resize(frame.yuyv.size());
           // SRanipal filters across the stereo seam before cropping either view.
-          median_filter_5x5(frame.yuyv, filtered_, stereo_width, capture_height);
+          if (filter_ == MedianFilter::pseudo_separable)
+          {
+            filter_scratch_.resize(frame.yuyv.size());
+            pseudo_separable_median_5x5(frame.yuyv, filtered_, filter_scratch_, stereo_width,
+              capture_height);
+          }
+          else
+          {
+            median_filter_5x5(frame.yuyv, filtered_, stereo_width, capture_height);
+          }
           for (std::size_t camera = 0; camera < 2; ++camera)
           {
             for (std::size_t y = 0; y < 100; ++y)
@@ -198,8 +209,9 @@ namespace sof
     };
   }  // namespace
 
-  std::unique_ptr<Inference> open_lip_mnn(const Config& config, InferencePrecision precision)
+  std::unique_ptr<Inference> open_lip_mnn(const Config& config, InferencePrecision precision,
+    MedianFilter filter)
   {
-    return std::make_unique<Mnn>(config, precision);
+    return std::make_unique<Mnn>(config, precision, filter);
   }
 }  // namespace sof

@@ -10,6 +10,8 @@ namespace sof
 {
   void median_filter_5x5(std::span<const std::uint8_t> input, std::span<std::uint8_t> output, std::size_t width,
     std::size_t height);
+  void pseudo_separable_median_5x5(std::span<const std::uint8_t> input, std::span<std::uint8_t> output,
+    std::span<std::uint8_t> scratch, std::size_t width, std::size_t height);
 
   inline constexpr std::size_t lip_raw_count = 30;
   inline constexpr std::size_t lip_parameter_count = 37;

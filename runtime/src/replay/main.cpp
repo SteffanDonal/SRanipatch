@@ -22,6 +22,7 @@ namespace
     std::filesystem::path output;
     std::string model { "../assets/models/lip_model.mnn" };
     sof::InferencePrecision precision { sof::InferencePrecision::normal };
+    sof::MedianFilter filter { sof::MedianFilter::exact };
     std::uint64_t frames {};
   };
 
@@ -33,7 +34,7 @@ namespace
       const std::string_view key(argv[i]);
       if (key == "--help")
       {
-        std::cout << "sof-replay --dataset capture.sofdata --output values.csv " "[--model lip_model.mnn] [--precision normal|low] [--frames N]\n";
+        std::cout << "sof-replay --dataset capture.sofdata --output values.csv " "[--model lip_model.mnn] [--precision normal|low] [--frames N] " "[--median exact|pseudo-separable]\n";
         std::exit(0);
       }
       if (++i == argc)
@@ -51,6 +52,15 @@ namespace
           std::from_chars(value.data(), value.data() + value.size(), result.frames);
         if (error != std::errc {} || end != value.data() + value.size() || !result.frames)
           throw std::runtime_error("Replay frame count must be positive");
+      }
+      else if (key == "--median")
+      {
+        if (value == "exact")
+          result.filter = sof::MedianFilter::exact;
+        else if (value == "pseudo-separable")
+          result.filter = sof::MedianFilter::pseudo_separable;
+        else
+          throw std::runtime_error("Median filter must be exact or pseudo-separable");
       }
       else if (key == "--precision")
       {
@@ -82,7 +92,7 @@ int main(int argc, char** argv)
       throw std::runtime_error("Lip replay requires 400x400 dataset frames");
     sof::Config config;
     sof::set_text(config.model, args.model);
-    auto inference = sof::open_lip_mnn(config, args.precision);
+    auto inference = sof::open_lip_mnn(config, args.precision, args.filter);
     if (!args.output.parent_path().empty())
       std::filesystem::create_directories(args.output.parent_path());
     std::ofstream output(args.output);
