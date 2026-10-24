@@ -8,7 +8,7 @@
 
 namespace sof
 {
-  enum class DatasetPixels : std::uint32_t
+  enum class DatasetPixels : std::uint8_t
   {
     luma8 = 1,
     yuyv = 2
@@ -26,7 +26,7 @@ namespace sof
     std::ofstream file_;
     std::uint32_t width_ {};
     std::uint32_t height_ {};
-    DatasetPixels pixels_ {};
+    DatasetPixels pixels_ { DatasetPixels::luma8 };
     std::uint64_t frame_count_ {};
   };
 
@@ -42,6 +42,6 @@ namespace sof
     std::ifstream file_;
     std::uint32_t width_ {};
     std::uint32_t height_ {};
-    DatasetPixels pixels_ {};
+    DatasetPixels pixels_ { DatasetPixels::luma8 };
   };
 }  // namespace sof

@@ -2,6 +2,7 @@
 #include "sof/frame.hpp"
 #include "sof/protocol.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -12,7 +13,7 @@ namespace sof
   class SharedMemory
   {
   public:
-    enum class Role
+    enum class Role : std::uint8_t
     {
       server,
       client

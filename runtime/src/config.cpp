@@ -21,7 +21,7 @@ namespace sof
     }
 
     template <std::size_t N>
-    void checked_text(std::array<char, N>& destination, std::string_view value, std::string_view key)
+    void checked_text(std::string_view key, std::array<char, N>& destination, std::string_view value)
     {
       if (value.empty() || value.size() >= N)
         throw std::runtime_error(std::string(key) + " is empty or too long");
@@ -75,13 +75,13 @@ namespace sof
       const auto value = trim(text.substr(separator + 1));
       if (key == "osc_host")
       {
-        checked_text(parsed.osc_host, value, key);
+        checked_text(key, parsed.osc_host, value);
       }
       else if (key == "osc_address")
       {
         if (value.empty() || value.front() != '/')
           throw std::runtime_error("osc_address must start with '/'");
-        checked_text(parsed.osc_address, value, key);
+        checked_text(key, parsed.osc_address, value);
       }
       else if (key == "osc_port")
       {

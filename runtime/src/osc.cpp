@@ -1,7 +1,7 @@
 #include "sof/osc.hpp"
 
 #include <bit>
-#include <limits>
+#include <cstddef>
 #include <stdexcept>
 #ifdef _WIN32
 #include <winsock2.h>

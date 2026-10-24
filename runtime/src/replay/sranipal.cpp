@@ -227,7 +227,7 @@ int main(int argc, char** argv)
         stereo = expanded.data();
       }
       Mat image(mat_construct, mat_destroy, static_cast<int>(frame.height),
-        static_cast<int>(frame.width * 2), stereo, frame.width * 2);
+        static_cast<int>(frame.width * 2), stereo, static_cast<std::size_t>(frame.width) * 2);
 
       struct Rect
       {

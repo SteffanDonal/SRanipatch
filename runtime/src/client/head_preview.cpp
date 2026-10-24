@@ -222,6 +222,7 @@ void main() {
       gl.EnableVertexAttribArray(1);
       gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(HeadVertex), nullptr);
       gl.VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(HeadVertex),
+        // NOLINTNEXTLINE(performance-no-int-to-ptr): OpenGL encodes byte offsets as pointers.
         reinterpret_cast<const void*>(offsetof(HeadVertex, normal)));
       gl.GenBuffers(1, &indices);
       gl.BindBuffer(element_buffer, indices);

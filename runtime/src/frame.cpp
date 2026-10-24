@@ -20,7 +20,7 @@ namespace sof
   bool LatestFrame::pop(Frame& frame, std::stop_token stop)
   {
     std::unique_lock lock(mutex_);
-    if (!ready_.wait_for(lock, stop, std::chrono::milliseconds(50), [this] { return pending_; }))
+    if (!ready_.wait_for(lock, std::move(stop), std::chrono::milliseconds(50), [this] { return pending_; }))
       return false;
     std::swap(frame_, frame);
     pending_ = false;
@@ -29,7 +29,7 @@ namespace sof
 
   void copy_yuyv_luma(const std::uint8_t* source, std::ptrdiff_t stride, Frame& frame)
   {
-    if (!frame.width || !frame.height || (stride >= 0 ? stride : -stride) < frame.width * 2)
+    if (!frame.width || !frame.height || (stride >= 0 ? stride : -stride) < std::ptrdiff_t { frame.width } * 2)
       throw std::runtime_error("Invalid YUYV luminance row stride");
     frame.luma.resize(static_cast<std::size_t>(frame.width) * frame.height);
     frame.yuyv.resize(static_cast<std::size_t>(frame.width) * frame.height * 2);
@@ -40,7 +40,7 @@ namespace sof
       std::copy_n(row, static_cast<std::size_t>(frame.width) * 2,
         frame.yuyv.data() + static_cast<std::size_t>(y) * frame.width * 2);
       for (std::uint32_t x = 0; x < frame.width; ++x)
-        dest[x] = row[x * 2];
+        dest[x] = row[static_cast<std::size_t>(x) * 2];
     }
   }
 }  // namespace sof

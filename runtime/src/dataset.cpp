@@ -43,6 +43,7 @@ namespace sof
     }
   }  // namespace
 
+  // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): Conventional width/height ordering.
   DatasetWriter::DatasetWriter(const std::filesystem::path& path, std::uint32_t width,
     std::uint32_t height, DatasetPixels pixels)
     : width_(width), height_(height), pixels_(pixels)

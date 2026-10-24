@@ -19,11 +19,11 @@
 #include <condition_variable>
 #include <cwchar>
 #include <cwctype>
-#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 namespace sof
 {
@@ -136,7 +136,7 @@ namespace sof
         if (!new_arrival_required && capture_device_present())
           return;
         std::unique_lock lock(mutex_);
-        changed_.wait(lock, stop, [this] { return signaled_; });
+        changed_.wait(lock, std::move(stop), [this] { return signaled_; });
       }
     };
 
@@ -362,7 +362,7 @@ namespace sof
       {
         for (UINT32 i = 0; i < count; ++i)
           items[i]->Release();
-        CoTaskMemFree(items);
+        CoTaskMemFree(static_cast<void*>(items));
       }
     };
 
@@ -617,7 +617,7 @@ namespace sof
           check(buffer->Lock(&data, nullptr, &length), "Lock buffer");
           const auto row_size =
             static_cast<std::size_t>(pitch < 0 ? -static_cast<std::int64_t>(pitch) : pitch);
-          if (row_size < width_ * 2 || length < row_size * height_)
+          if (row_size < static_cast<std::size_t>(width_) * 2 || length < row_size * height_)
           {
             buffer->Unlock();
             dropped_frame("incomplete VIVE YUY2 buffer");
@@ -626,7 +626,7 @@ namespace sof
           if (pitch < 0)
             data += (height_ - 1) * row_size;
         }
-        if (static_cast<std::int64_t>(pitch < 0 ? -static_cast<std::int64_t>(pitch) : pitch) < width_ * 2)
+        if ((pitch < 0 ? -static_cast<std::int64_t>(pitch) : pitch) < static_cast<std::int64_t>(width_) * 2)
         {
           if (is_2d)
             planar->Unlock2D();
@@ -653,6 +653,6 @@ namespace sof
   void wait_for_capture_device(std::stop_token stop, bool new_arrival_required)
   {
     DeviceArrival arrival;
-    arrival.wait(stop, new_arrival_required);
+    arrival.wait(std::move(stop), new_arrival_required);
   }
 }  // namespace sof

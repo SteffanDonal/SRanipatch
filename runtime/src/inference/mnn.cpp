@@ -113,11 +113,11 @@ namespace sof
         if (frame.width != capture_width || frame.height != capture_height || frame.luma.size() != static_cast<std::size_t>(capture_width) * capture_height)
           throw std::runtime_error("Lip inference requires a 400x400 packed stereo luminance frame");
         auto* dest = input_host_->host<float>();
-        constexpr std::size_t plane = 100 * 100;
+        constexpr std::size_t plane = std::size_t { 100 } * 100;
         if (frame.yuyv.size() == static_cast<std::size_t>(capture_width) * capture_height * 2)
         {
           constexpr std::array<int, 4> cubic { -3, 19, 19, -3 };
-          constexpr std::size_t stereo_width = capture_width * 2;
+          constexpr std::size_t stereo_width = std::size_t { capture_width } * 2;
           filtered_.resize(frame.yuyv.size());
           // SRanipal filters across the stereo seam before cropping either view.
           if (filter_ == MedianFilter::pseudo_separable)

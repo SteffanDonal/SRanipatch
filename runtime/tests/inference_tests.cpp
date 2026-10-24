@@ -10,7 +10,6 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -76,7 +75,7 @@ namespace
     {
       for (const auto height : { 1, 2, 9, 23, 400 })
       {
-        std::vector<std::uint8_t> input(static_cast<std::size_t>(width * height));
+        std::vector<std::uint8_t> input(static_cast<std::size_t>(width) * height);
         std::vector<std::uint8_t> filtered(input.size());
         std::vector<std::uint8_t> separable(input.size()), scratch(input.size());
         std::uint32_t seed = 713;
@@ -100,16 +99,16 @@ namespace
             {
               std::array<std::uint8_t, 5> row {};
               for (int dx = -2; dx <= 2; ++dx)
-                row[static_cast<std::size_t>(dx + 2)] = neighbors[i++] =
-                  input[static_cast<std::size_t>(std::clamp(y + dy, 0, height - 1) * width + std::clamp(x + dx, 0, width - 1))];
+                row[dx + 2] = neighbors[i++] =
+                  input[static_cast<std::size_t>(std::clamp(y + dy, 0, height - 1)) * width + std::clamp(x + dx, 0, width - 1)];
               std::sort(row.begin(), row.end());
-              row_medians[static_cast<std::size_t>(dy + 2)] = row[2];
+              row_medians[dy + 2] = row[2];
             }
             std::sort(row_medians.begin(), row_medians.end());
-            require(separable[static_cast<std::size_t>(y * width + x)] == row_medians[2],
+            require(separable[static_cast<std::size_t>(y) * width + x] == row_medians[2],
               "separable median differs from sorted row medians with replicated borders");
             std::sort(neighbors.begin(), neighbors.end());
-            require(filtered[static_cast<std::size_t>(y * width + x)] == neighbors[12],
+            require(filtered[static_cast<std::size_t>(y) * width + x] == neighbors[12],
               "median filter differs from a full 5x5 sort with replicated borders");
           }
         }

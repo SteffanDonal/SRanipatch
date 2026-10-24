@@ -1,7 +1,6 @@
 #include "head_model.hpp"
 #include "sof/lip.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>

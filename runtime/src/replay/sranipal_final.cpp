@@ -143,9 +143,11 @@ namespace
         distance += granularity)
       {
         if (base <= std::numeric_limits<std::uintptr_t>::max() - distance)
+          // NOLINTNEXTLINE(performance-no-int-to-ptr): VirtualAlloc probes numeric addresses near the hook target.
           thunk_ = VirtualAlloc(reinterpret_cast<void*>(base + distance), 4096,
             MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
         if (!thunk_ && base >= distance)
+          // NOLINTNEXTLINE(performance-no-int-to-ptr): VirtualAlloc probes numeric addresses near the hook target.
           thunk_ = VirtualAlloc(reinterpret_cast<void*>(base - distance), 4096,
             MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
       }
@@ -294,7 +296,7 @@ int main(int argc, char** argv)
       throw std::runtime_error("LPredictionModule_v2 returned an unexpected memory contract");
     Elements inputs(input_definitions, input_count);
     Elements outputs(output_definitions, output_count);
-    if (inputs[0].size != 800 * 400 || outputs[0].size < (sof::lip_parameter_count + 1) * sizeof(float))
+    if (inputs[0].size != std::uint64_t { 800 } * 400 || outputs[0].size < (sof::lip_parameter_count + 1) * sizeof(float))
       throw std::runtime_error("LPredictionModule_v2 returned unexpected buffer sizes");
     if (initial(instance) != 0 || start(instance) != 0)
       throw std::runtime_error("LPredictionModule_v2 initialization failed");

@@ -6,7 +6,6 @@
 
 #include <atomic>
 #include <charconv>
-#include <cmath>
 #include <csignal>
 #include <iostream>
 #include <mutex>
@@ -151,7 +150,7 @@ namespace
       std::atomic<bool> capture_fault {};
       std::mutex error_mutex;
       std::string capture_error;
-      std::jthread capture([&](std::stop_token stop) {
+      std::jthread capture([&](const std::stop_token& stop) {
         try
         {
           while (!stop.stop_requested())

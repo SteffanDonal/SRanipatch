@@ -2,17 +2,18 @@
 #include "sof/frame.hpp"
 #include "sof/protocol.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <span>
 
 namespace sof
 {
-  enum class InferencePrecision
+  enum class InferencePrecision : std::uint8_t
   {
     normal,
     low
   };
-  enum class MedianFilter
+  enum class MedianFilter : std::uint8_t
   {
     exact,
     pseudo_separable

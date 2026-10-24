@@ -2,6 +2,8 @@ include(FetchContent)
 
 # Immutable revisions; FetchContent source overrides also allow offline/vendor builds.
 function(sof_add_mnn)
+    # MNN enables ASM on MSVC without compiling assembler sources.
+    set(CMAKE_POLICY_DEFAULT_CMP0194 OLD)
     set(MNN_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     set(MNN_WIN_RUNTIME_MT OFF CACHE BOOL "" FORCE)
     set(MNN_SEP_BUILD OFF CACHE BOOL "" FORCE)
@@ -45,6 +47,13 @@ function(sof_add_mnn)
 endfunction()
 
 function(sof_add_opencv)
+    set(CMAKE_POLICY_DEFAULT_CMP0177 NEW)
+    set(CMAKE_POLICY_DEFAULT_CMP0218 OLD)
+    if(POLICY CMP0218)
+        cmake_policy(SET CMP0218 OLD)
+    endif()
+    # OpenCV explicitly selects deprecated policies for compatibility.
+    set(CMAKE_WARN_DEPRECATED OFF)
     set(sof_executable_output_path "${EXECUTABLE_OUTPUT_PATH}")
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     set(BUILD_LIST core,imgproc CACHE STRING "" FORCE)

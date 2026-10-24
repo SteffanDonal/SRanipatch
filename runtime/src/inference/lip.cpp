@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <span>
 
 namespace sof
 {
@@ -10,8 +11,10 @@ namespace sof
     constexpr float validity_threshold = 0.4F;
     constexpr unsigned stable_frames = 25;
 
-    void split_axis(float value, float center, float& negative, float& positive)
+    void split_axis(float value, float center, std::span<float, 2> output)
     {
+      auto& negative = output[0];
+      auto& positive = output[1];
       if (value < center)
       {
         negative = center > 0.0F ? (center - value) / center : 0.0F;
@@ -85,12 +88,12 @@ namespace sof
       }
     }
 
-    split_axis(raw[1], centers_[0], output[0], output[1]);
+    split_axis(raw[1], centers_[0], std::span(output).subspan<0, 2>());
     output[2] = std::max(0.0F, raw[2] - centers_[3]);
     output[3] = raw[3];
     output[4] = raw[4];
-    split_axis(raw[5], centers_[1], output[5], output[6]);
-    split_axis(raw[6], centers_[2], output[7], output[8]);
+    split_axis(raw[5], centers_[1], std::span(output).subspan<5, 2>());
+    split_axis(raw[6], centers_[2], std::span(output).subspan<7, 2>());
     std::copy(raw.begin() + 7, raw.end(), output.begin() + 9);
 
     for (std::size_t i = 0; i < maxima_.size(); ++i)

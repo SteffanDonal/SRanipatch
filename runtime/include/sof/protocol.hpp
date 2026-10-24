@@ -31,6 +31,7 @@ namespace sof
     text.copy(dest.data(), text.size() < N - 1 ? text.size() : N - 1);
   }
 
+  // NOLINTNEXTLINE(performance-enum-size): Fixed-width shared-memory protocol field.
   enum class ServerState : std::uint32_t
   {
     starting,
@@ -80,7 +81,7 @@ namespace sof
   {
     std::uint64_t sequence {};
     std::uint64_t timestamp_ns {};
-    std::array<std::uint8_t, capture_width * capture_height> luma {};
+    std::array<std::uint8_t, std::size_t { capture_width } * capture_height> luma {};
   };
 
   struct SharedBlock
