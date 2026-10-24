@@ -17,3 +17,9 @@ Documentation is lube for understanding context, it cannot replace well-written,
 
 - Generally, prefer statements over narrative prose.
 - Lists are preferable to "x, y and z" patterns.
+
+# Task Completion
+
+- Check changed files for lint diagnostics before considering a task complete.
+- Resolve diagnostics; use narrow, justified suppressions only where required.
+- Report any lint checks that could not be completed.
