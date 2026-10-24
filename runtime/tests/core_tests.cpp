@@ -21,7 +21,6 @@
 #include <arpa/inet.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
@@ -225,18 +224,13 @@ namespace
     must_throw([&] { sof::SharedMemory duplicate(name, sof::SharedMemory::Role::server); });
     sof::SharedMemory client(name, sof::SharedMemory::Role::client);
     sof::Status status;
-    sof::Controls controls;
     status.frames_inferred = 123;
     status.parameter_count = 1;
     status.parameters[0].value = 0.5F;
-    require(server->publish(status, controls), "Server snapshot publish failed");
+    require(server->publish(status), "Server snapshot publish failed");
     sof::Status received;
-    require(client.read(received, controls) && received.frames_inferred == 123 && received.parameters[0].value == 0.5F,
+    require(client.read(received) && received.frames_inferred == 123 && received.parameters[0].value == 0.5F,
       "IPC snapshot differs");
-    std::uint64_t revision {};
-    require(client.control(true, false, revision), "Control write failed");
-    require(server->publish(status, controls) && controls.revision == revision && controls.paused == 1 && controls.osc_enabled == 0,
-      "Server did not receive controls");
     sof::Frame image;
     image.width = sof::capture_width;
     image.height = sof::capture_height;
@@ -249,7 +243,7 @@ namespace
     require(!client.read_frame(received_frame), "Unchanged preview must not be copied again");
     server.reset();
     server = std::make_unique<sof::SharedMemory>(name, sof::SharedMemory::Role::server);
-    require(client.read(received, controls) && received.frames_inferred == 0 && controls.revision == 0,
+    require(client.read(received) && received.frames_inferred == 0,
       "A connected client did not see the restarted server's reset state");
     require(!client.read_frame(received_frame), "Restarted server exposed a stale preview");
     must_throw([] { sof::SharedMemory invalid("../bad", sof::SharedMemory::Role::server); });
@@ -314,84 +308,19 @@ namespace
     invalid.wrong_echo = true;
     must_throw([&] { sof::enable_vive_tracker(invalid); });
   }
-
-  void process_roundtrip(const char* executable)
-  {
-    const TestChannel channel;
-    const auto& name = channel.name;
-    sof::SharedMemory server(name, sof::SharedMemory::Role::server);
-    sof::Status status;
-    sof::Controls controls;
-    status.frames_inferred = 42;
-    status.parameter_count = 1;
-    status.parameters[0].value = 0.75F;
-    require(server.publish(status, controls), "Initial publish failed");
-#ifdef _WIN32
-    std::string command = "\"" + std::string(executable) + "\" " + name;
-    STARTUPINFOA startup {};
-    startup.cb = sizeof(startup);
-    PROCESS_INFORMATION process {};
-    require(CreateProcessA(executable, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
-              nullptr, &startup, &process)
-        != 0,
-      "Cannot start IPC peer");
-    CloseHandle(process.hThread);
-#else
-    const auto pid = fork();
-    require(pid >= 0, "fork failed");
-    if (pid == 0)
-    {
-      execl(executable, executable, name.c_str(), nullptr);
-      _exit(127);
-    }
-#endif
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    bool acknowledged {};
-    while (std::chrono::steady_clock::now() < deadline)
-    {
-      if (server.read(status, controls) && controls.revision == 1 && controls.paused && !controls.osc_enabled)
-      {
-        status.applied_revision = controls.revision;
-        status.state = sof::ServerState::paused;
-        status.osc_enabled = 0;
-        if (server.publish(status, controls))
-        {
-          acknowledged = true;
-          break;
-        }
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-#ifdef _WIN32
-    const auto waited = WaitForSingleObject(process.hProcess, 6000);
-    DWORD code { 1 };
-    GetExitCodeProcess(process.hProcess, &code);
-    CloseHandle(process.hProcess);
-    require(waited == WAIT_OBJECT_0 && code == 0, "IPC peer failed");
-#else
-    int code {};
-    require(waitpid(pid, &code, 0) == pid && WIFEXITED(code) && WEXITSTATUS(code) == 0, "IPC peer failed");
-#endif
-    require(acknowledged, "No controls received from child process");
-  }
 }  // namespace
 
-int main(int argc, char** argv)
+int main()
 {
   try
   {
-    if (argc == 2)
-      process_roundtrip(argv[1]);
-    else
-    {
-      osc_encoding();
-      udp_delivery();
-      frames();
-      dataset_roundtrip();
-      configuration();
-      tracker_commands();
-      ipc_roundtrip();
-    }
+    osc_encoding();
+    udp_delivery();
+    frames();
+    dataset_roundtrip();
+    configuration();
+    tracker_commands();
+    ipc_roundtrip();
     std::cout << "All checks passed\n";
     return 0;
   }

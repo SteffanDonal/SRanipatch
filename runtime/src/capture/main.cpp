@@ -119,10 +119,8 @@ int main(int argc, char** argv)
     if (ipc)
     {
       sof::Status status;
-      sof::Controls controls;
-      if (ipc->read(status, controls))
-        std::cout << "Server captured " << status.frames_captured << " frames; inference "
-                  << (status.inference_enabled ? "enabled" : "disabled") << '\n';
+      if (ipc->read(status))
+        std::cout << "Server captured " << status.frames_captured << " frames\n";
     }
     if (capture)
     {

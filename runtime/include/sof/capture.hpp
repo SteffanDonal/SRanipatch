@@ -1,6 +1,5 @@
 #pragma once
 #include "sof/frame.hpp"
-#include "sof/protocol.hpp"
 
 #include <memory>
 #include <stdexcept>

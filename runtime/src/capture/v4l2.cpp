@@ -1,4 +1,5 @@
 #include "sof/capture.hpp"
+#include "sof/protocol.hpp"
 #include "sof/vive_tracker.hpp"
 
 #include <fcntl.h>

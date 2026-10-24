@@ -201,40 +201,25 @@ namespace sof
 
   SharedMemory::~SharedMemory() = default;
 
-  bool SharedMemory::read(Status& status, Controls& controls)
+  bool SharedMemory::read(Status& status)
   {
     if (!impl_->lock())
       return false;
     Impl::Guard guard { *impl_ };
     impl_->validate();
     status = impl_->block->status;
-    controls = impl_->block->controls;
     if (status.parameter_count > max_parameters)
       throw std::runtime_error("Invalid IPC parameter count");
     return true;
   }
 
-  bool SharedMemory::publish(const Status& status, Controls& controls)
+  bool SharedMemory::publish(const Status& status)
   {
     if (!impl_->lock())
       return false;
     Impl::Guard guard { *impl_ };
     impl_->validate();
     impl_->block->status = status;
-    controls = impl_->block->controls;
-    return true;
-  }
-
-  bool SharedMemory::control(bool paused, bool osc_enabled, std::uint64_t& revision)
-  {
-    if (!impl_->lock())
-      return false;
-    Impl::Guard guard { *impl_ };
-    impl_->validate();
-    auto& controls = impl_->block->controls;
-    controls.paused = paused ? 1U : 0U;
-    controls.osc_enabled = osc_enabled ? 1U : 0U;
-    revision = ++controls.revision;
     return true;
   }
 

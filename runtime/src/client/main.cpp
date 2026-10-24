@@ -37,8 +37,6 @@ namespace
         return "Waiting for camera";
       case sof::ServerState::running:
         return "Running";
-      case sof::ServerState::paused:
-        return "Paused";
       case sof::ServerState::stopped:
         return "Stopped";
       case sof::ServerState::fault:
@@ -128,10 +126,8 @@ namespace
     }
     std::unique_ptr<sof::SharedMemory> ipc;
     sof::Status status;
-    sof::Controls controls;
     std::string connection_message { "Waiting for server" };
-    std::uint64_t retry_at {}, session {}, requested_revision {};
-    bool paused {}, osc_enabled { true }, request_pending {};
+    std::uint64_t retry_at {}, session {};
     std::array<float, 120> rates {};
     std::size_t graph_index {};
     std::uint64_t graph_at {};
@@ -182,23 +178,14 @@ namespace
       {
         try
         {
-          ipc->read(status, controls);
+          ipc->read(status);
           const auto observed_at = sof::monotonic_ns();
           fresh = status.heartbeat_ns && observed_at >= status.heartbeat_ns && observed_at - status.heartbeat_ns < 2'000'000'000ULL;
           if (session != status.session_id)
           {
             session = status.session_id;
-            request_pending = false;
-            requested_revision = 0;
             preview = {};
           }
-          if (!request_pending && controls.revision <= status.applied_revision)
-          {
-            paused = status.state == sof::ServerState::paused;
-            osc_enabled = status.osc_enabled != 0;
-          }
-          if (request_pending && requested_revision != 0 && status.applied_revision >= requested_revision)
-            request_pending = false;
           if (ipc->read_frame(preview))
           {
             glBindTexture(GL_TEXTURE_2D, preview_texture);
@@ -264,7 +251,7 @@ namespace
             {
               const float side = std::clamp(ImGui::GetContentRegionAvail().x, 64.0F, 400.0F);
               const auto count =
-                fresh && status.inference_enabled
+                fresh
                 ? std::min<std::size_t>(status.parameter_count, sof::max_parameters)
                 : 0;
               try
@@ -272,9 +259,8 @@ namespace
                 const int render_width = std::clamp(
                   static_cast<int>(side * ImGui::GetIO().DisplayFramebufferScale.x), 64, 1024
                 );
-                const auto texture = head->render(
-                  std::span(status.parameters.data(), count), render_width, render_width / 2
-                );
+                const auto texture = head->render(std::span(status.parameters.data(), count),
+                  render_width, render_width / 2);
                 ImGui::Image(static_cast<ImTextureID>(texture), ImVec2(side, side * 0.5F),
                   ImVec2(1, 1), ImVec2(0, 0));
               }
@@ -294,8 +280,8 @@ namespace
             if (!preview.luma.empty())
             {
               const float side = std::min(400.0F, ImGui::GetContentRegionAvail().x);
-              const float left = camera_view == 2 ? 0.5F : 0.0F;
-              const float right = camera_view == 1 ? 0.5F : 1.0F;
+              const float left = camera_view == 2 ? 0.5F + 0.5F / 400.0F : 0.0F;
+              const float right = camera_view == 1 ? 0.5F - 0.5F / 400.0F : 1.0F;
               const float height =
                 side * static_cast<float>(preview.height) / static_cast<float>(preview.width);
               ImGui::Image(static_cast<ImTextureID>(preview_texture), ImVec2(side, height),
@@ -319,26 +305,7 @@ namespace
           static_cast<unsigned long long>(status.osc_failures));
         ImGui::PlotLines("Inference FPS", rates.data(), static_cast<int>(rates.size()),
           static_cast<int>(graph_index), nullptr, 0.0F, 120.0F, ImVec2(0, 80));
-        ImGui::SeparatorText("Controls");
-        ImGui::BeginDisabled(!ipc || !fresh);
-        bool changed =
-          ImGui::Checkbox(status.inference_enabled ? "Pause inference" : "Pause preview", &paused);
-        ImGui::BeginDisabled(!status.inference_enabled);
-        changed |= ImGui::Checkbox("Send OSC", &osc_enabled);
-        ImGui::EndDisabled();
-        if (changed)
-          request_pending = true;
-        if (ipc && fresh && request_pending && (changed || requested_revision == 0))
-        {
-          if (!ipc->control(paused, osc_enabled, requested_revision))
-            requested_revision = 0;
-        }
-        ImGui::EndDisabled();
-        if (request_pending)
-          ImGui::TextUnformatted("Waiting for server to apply controls...");
         ImGui::SeparatorText("Configuration");
-        ImGui::TextWrapped("Model: %s",
-          status.inference_enabled ? status.config.model.data() : "Capture only");
         ImGui::Text("VIVE Facial Tracker: %ux%u @ %u fps    MNN threads: %u", sof::capture_width,
           sof::capture_height, sof::capture_fps, status.config.threads);
         ImGui::TextWrapped("OSC: %s:%u %s", status.config.osc_host.data(), status.config.osc_port,
@@ -346,35 +313,56 @@ namespace
         ImGui::EndTable();
       }
       ImGui::SeparatorText("Parameters");
-      if (ImGui::BeginTable("parameters", 3, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_ScrollY,
-            ImVec2(0, 0)))
+      if (ImGui::BeginChild("parameters"))
       {
         const auto count = std::min<std::size_t>(status.parameter_count, sof::max_parameters);
-        for (std::size_t i = 0; i < count; ++i)
+        bool has_group = false;
+        for (int group = 0; group < 3; ++group)
         {
-          ImGui::TableNextColumn();
-          ImGui::PushID(static_cast<int>(i));
-          float value = status.parameters[i].value;
-          ImGui::SetNextItemWidth(-1.0F);
-          ImGui::BeginDisabled();
-          ImGui::SliderFloat("##value", &value, 0.0F, 1.0F, "", ImGuiSliderFlags_NoInput);
-          ImGui::EndDisabled();
-          const auto min = ImGui::GetItemRectMin();
-          const auto max = ImGui::GetItemRectMax();
-          const auto* label = status.parameters[i].name.data();
-          const auto size = ImGui::CalcTextSize(label);
-          const ImVec4 clip(min.x, min.y, max.x, max.y);
-          ImGui::GetWindowDrawList()->AddText(
-            ImGui::GetFont(), ImGui::GetFontSize(),
-            ImVec2(min.x + ImGui::GetStyle().FramePadding.x,
-              min.y + (max.y - min.y - size.y) * 0.5F),
-            ImGui::GetColorU32(ImGuiCol_Text), label, nullptr, 0.0F,
-            &clip
-          );
+          bool table_open = false;
+          ImGui::PushID(group);
+          for (std::size_t i = 0; i < count; ++i)
+          {
+            const std::string_view parameter_name(status.parameters[i].name.data());
+            const int parameter_group = parameter_name.starts_with("mouth_") ? 0
+              : parameter_name.starts_with("tongue_")                        ? 2
+                                                                             : 1;
+            if (parameter_group != group)
+              continue;
+            if (!table_open)
+            {
+              if (has_group)
+                ImGui::Separator();
+              table_open = ImGui::BeginTable("sliders", 4, ImGuiTableFlags_SizingStretchSame);
+              if (!table_open)
+                break;
+              has_group = true;
+            }
+            ImGui::TableNextColumn();
+            ImGui::PushID(static_cast<int>(i));
+            float value = status.parameters[i].value;
+            ImGui::SetNextItemWidth(-1.0F);
+            ImGui::BeginDisabled();
+            ImGui::SliderFloat("##value", &value, 0.0F, 1.0F, "", ImGuiSliderFlags_NoInput);
+            ImGui::EndDisabled();
+            const auto min = ImGui::GetItemRectMin();
+            const auto max = ImGui::GetItemRectMax();
+            const auto* label = status.parameters[i].name.data();
+            const auto size = ImGui::CalcTextSize(label);
+            const ImVec4 clip(min.x, min.y, max.x, max.y);
+            ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
+              ImVec2(min.x + ImGui::GetStyle().FramePadding.x,
+                min.y + (max.y - min.y - size.y) * 0.5F),
+              ImGui::GetColorU32(ImGuiCol_Text), label, nullptr,
+              0.0F, &clip);
+            ImGui::PopID();
+          }
+          if (table_open)
+            ImGui::EndTable();
           ImGui::PopID();
         }
-        ImGui::EndTable();
       }
+      ImGui::EndChild();
       ImGui::End();
       ImGui::Render();
       int width {}, height {};

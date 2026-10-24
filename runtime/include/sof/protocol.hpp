@@ -10,7 +10,7 @@
 namespace sof
 {
   inline constexpr std::uint32_t protocol_magic = 0x534F4631;
-  inline constexpr std::uint32_t protocol_version = 6;
+  inline constexpr std::uint32_t protocol_version = 7;
   inline constexpr std::size_t max_parameters = 128;
   inline constexpr std::uint32_t capture_width = 400;
   inline constexpr std::uint32_t capture_height = 400;
@@ -36,7 +36,6 @@ namespace sof
     starting,
     waiting_for_camera,
     running,
-    paused,
     stopped,
     fault
   };
@@ -65,7 +64,6 @@ namespace sof
     std::uint64_t frames_inferred {};
     std::uint64_t frames_skipped {};
     std::uint64_t osc_failures {};
-    std::uint64_t applied_revision {};
     std::uint64_t session_id {};
     ServerState state { ServerState::starting };
     std::uint32_t parameter_count {};
@@ -73,18 +71,9 @@ namespace sof
     float inference_fps {};
     float inference_ms {};
     float frame_age_ms {};
-    std::uint32_t osc_enabled { 1 };
-    std::uint32_t inference_enabled { 1 };
     Config config {};
     std::array<Parameter, max_parameters> parameters {};
     std::array<char, 256> error {};
-  };
-
-  struct Controls
-  {
-    std::uint64_t revision {};
-    std::uint32_t paused {};
-    std::uint32_t osc_enabled { 1 };
   };
 
   struct Preview
@@ -101,7 +90,6 @@ namespace sof
     std::uint32_t size { sizeof(SharedBlock) };
     std::uint32_t reserved {};
     Status status {};
-    Controls controls {};
     Preview preview {};
   };
 
@@ -109,9 +97,8 @@ namespace sof
   static_assert(std::is_standard_layout_v<SharedBlock>);
   static_assert(sizeof(Parameter) == 52);
   static_assert(sizeof(Config) == 464);
-  static_assert(sizeof(Status) == 7464);
-  static_assert(sizeof(SharedBlock) == 167512);
+  static_assert(sizeof(Status) == 7448);
+  static_assert(sizeof(SharedBlock) == 167480);
   static_assert(offsetof(SharedBlock, status) == 16);
-  static_assert(offsetof(SharedBlock, controls) == 7480);
-  static_assert(offsetof(SharedBlock, preview) == 7496);
+  static_assert(offsetof(SharedBlock, preview) == 7464);
 }  // namespace sof

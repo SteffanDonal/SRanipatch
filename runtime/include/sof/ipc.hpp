@@ -21,9 +21,8 @@ namespace sof
     ~SharedMemory();
     SharedMemory(const SharedMemory&) = delete;
     SharedMemory& operator=(const SharedMemory&) = delete;
-    bool read(Status& status, Controls& controls);
-    bool publish(const Status& status, Controls& controls);
-    bool control(bool paused, bool osc_enabled, std::uint64_t& revision);
+    bool read(Status& status);
+    bool publish(const Status& status);
     // Preview copies are bounded and independent of status publication. False
     // means contention or no new frame; inference never waits for the GUI.
     bool publish_frame(const Frame& frame);

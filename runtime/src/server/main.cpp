@@ -42,7 +42,6 @@ namespace
     sof::MedianFilter median { default_median };
     std::string ipc { "sranipal" };
     bool help {};
-    bool capture_only {};
     std::uint32_t seconds {};
   };
 
@@ -78,11 +77,6 @@ namespace
       if (key == "--help" || key == "-h")
       {
         options.help = true;
-        continue;
-      }
-      if (key == "--capture-only")
-      {
-        options.capture_only = true;
         continue;
       }
       if (++i >= argc)
@@ -128,7 +122,7 @@ namespace
 
   void usage()
   {
-    std::cout << "sof-server [options]\n" "  --capture-only    Capture and preview without inference or OSC\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --seconds N       Stop after N seconds (optional)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
+    std::cout << "sof-server [options]\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --seconds N       Stop after N seconds (optional)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
               << precision_name(default_precision)
               << ")\n" "  --median MODE     Median filter: exact or pseudo-separable (default "
               << median_name(default_median)
@@ -139,26 +133,18 @@ namespace
   {
     sof::SharedMemory ipc(options.ipc, sof::SharedMemory::Role::server);
     sof::Status status;
-    sof::Controls controls;
     status.config = options.config;
-    status.inference_enabled = options.capture_only ? 0U : 1U;
-    status.osc_enabled = options.capture_only ? 0U : 1U;
     status.session_id = sof::monotonic_ns();
     status.heartbeat_ns = status.session_id;
-    ipc.publish(status, controls);
+    ipc.publish(status);
     try
     {
-      std::unique_ptr<sof::Inference> inference;
-      std::unique_ptr<sof::OscSender> osc;
-      if (!options.capture_only)
-      {
-        inference = sof::open_lip_mnn(options.config, options.precision, options.median);
-        std::cout << "MNN CPU precision: " << precision_name(options.precision) << '\n';
-        std::cout << "Median filter: " << median_name(options.median) << '\n';
-        osc = std::make_unique<sof::OscSender>(options.config.osc_host.data(),
-          static_cast<std::uint16_t>(options.config.osc_port),
-          options.config.osc_address.data());
-      }
+      auto inference = sof::open_lip_mnn(options.config, options.precision, options.median);
+      std::cout << "MNN CPU precision: " << precision_name(options.precision) << '\n';
+      std::cout << "Median filter: " << median_name(options.median) << '\n';
+      sof::OscSender osc(options.config.osc_host.data(),
+        static_cast<std::uint16_t>(options.config.osc_port),
+        options.config.osc_address.data());
       sof::LatestFrame latest;
       std::atomic<std::uint64_t> captured {};
       std::atomic<bool> capture_connected {};
@@ -231,36 +217,22 @@ namespace
           if (frame.sequence > last_sequence + 1)
             status.frames_skipped += frame.sequence - last_sequence - 1;
           last_sequence = frame.sequence;
-          if (!controls.paused)
+          const auto begin = sof::monotonic_ns();
+          if (begin - preview_time >= 33'000'000ULL)
           {
-            const auto begin = sof::monotonic_ns();
-            if (begin - preview_time >= 33'000'000ULL)
-            {
-              if (ipc.publish_frame(frame))
-                preview_time = begin;
-            }
-            if (inference)
-            {
-              const auto inference_begin = sof::monotonic_ns();
-              status.parameter_count = inference->run(frame, status.parameters);
-              const auto end = sof::monotonic_ns();
-              ++status.frames_inferred;
-              status.inference_ms = static_cast<float>(end - inference_begin) / 1.0e6F;
-              status.frame_age_ms = static_cast<float>(end - frame.timestamp_ns) / 1.0e6F;
-              if (controls.osc_enabled)
-              {
-                for (std::size_t i = 0; i < status.parameter_count; ++i)
-                  values[i] = status.parameters[i].value;
-                if (!osc->send(std::span(values.data(), status.parameter_count)))
-                  ++status.osc_failures;
-              }
-            }
-            else
-              status.frame_age_ms =
-                static_cast<float>(sof::monotonic_ns() - frame.timestamp_ns) / 1.0e6F;
+            if (ipc.publish_frame(frame))
+              preview_time = begin;
           }
-          else
-            ++status.frames_skipped;
+          const auto inference_begin = sof::monotonic_ns();
+          status.parameter_count = inference->run(frame, status.parameters);
+          const auto end = sof::monotonic_ns();
+          ++status.frames_inferred;
+          status.inference_ms = static_cast<float>(end - inference_begin) / 1.0e6F;
+          status.frame_age_ms = static_cast<float>(end - frame.timestamp_ns) / 1.0e6F;
+          for (std::size_t i = 0; i < status.parameter_count; ++i)
+            values[i] = status.parameters[i].value;
+          if (!osc.send(std::span(values.data(), status.parameter_count)))
+            ++status.osc_failures;
         }
         const auto now = sof::monotonic_ns();
         status.frames_captured = captured.load(std::memory_order_relaxed);
@@ -280,13 +252,11 @@ namespace
         if (!capture_connected.load(std::memory_order_acquire))
           status.state = sof::ServerState::waiting_for_camera;
         else
-          status.state = controls.paused ? sof::ServerState::paused : sof::ServerState::running;
-        status.osc_enabled = inference ? controls.osc_enabled : 0U;
-        status.applied_revision = controls.revision;
+          status.state = sof::ServerState::running;
         if (now - publish_time >= 33'000'000ULL)
         {
           status.heartbeat_ns = now;
-          if (ipc.publish(status, controls))
+          if (ipc.publish(status))
             publish_time = now;
         }
       }
@@ -301,7 +271,7 @@ namespace
       std::cerr << "Server fault: " << error.what() << '\n';
     }
     status.heartbeat_ns = sof::monotonic_ns();
-    for (int i = 0; i < 10 && !ipc.publish(status, controls); ++i)
+    for (int i = 0; i < 10 && !ipc.publish(status); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     return status.state == sof::ServerState::fault ? 1 : 0;
   }
