@@ -40,6 +40,8 @@ sof-client
 
 Run `sof-server --help` for model, OSC and IPC options. Both processes must use the same `--ipc` name. Model configuration is supplied at server startup; GUI controls apply live.
 
+The client previews live lip blendshapes using `head.glb` beside its executable. `sof-client --head PATH` selects another model. The Blendshapes tab provides yaw and pitch controls; the Camera tab shows the tracker image.
+
 The server reads OSC defaults from `~/.config/sranipal-on-frame/config.ini` on Linux, or `%APPDATA%\sranipal-on-frame\config.ini` on Windows. Command-line options override the file. Supported keys are:
 
 ```ini

@@ -1,3 +1,4 @@
+#include "head_preview.hpp"
 #include "sof/ipc.hpp"
 
 #include <GLFW/glfw3.h>
@@ -9,9 +10,13 @@
 #include <array>
 #include <csignal>
 #include <cstdio>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace
 {
@@ -47,22 +52,55 @@ namespace
     std::cerr << "GLFW: " << message << '\n';
   }
 
-  std::string channel(int argc, char** argv)
+  std::filesystem::path default_head_path()
   {
-    if (argc == 1)
-      return "sranipal";
-    if (argc == 2 && std::string_view(argv[1]) == "--help")
-    {
-      std::cout << "sof-client [--ipc NAME]\n";
-      return {};
-    }
-    if (argc == 3 && std::string_view(argv[1]) == "--ipc")
-      return argv[2];
-    throw std::runtime_error("Usage: sof-client [--ipc NAME]");
+#ifdef _WIN32
+    std::array<wchar_t, 32768> executable {};
+    const auto length = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+    if (length && length < executable.size())
+      return std::filesystem::path(executable.data()).parent_path() / "head.glb";
+#else
+    std::error_code error;
+    const auto executable = std::filesystem::read_symlink("/proc/self/exe", error);
+    if (!error)
+      return executable.parent_path() / "head.glb";
+#endif
+    return "head.glb";
   }
 
-  int run(const std::string& name)
+  struct Options
   {
+    std::string ipc { "sranipal" };
+    std::filesystem::path head { default_head_path() };
+    bool help {};
+  };
+
+  Options options(int argc, char** argv)
+  {
+    Options result;
+    for (int i = 1; i < argc; ++i)
+    {
+      const std::string_view key(argv[i]);
+      if (key == "--help")
+      {
+        result.help = true;
+        continue;
+      }
+      if (++i == argc)
+        throw std::runtime_error("Missing client option value");
+      if (key == "--ipc")
+        result.ipc = argv[i];
+      else if (key == "--head")
+        result.head = argv[i];
+      else
+        throw std::runtime_error("Unknown client option: " + std::string(key));
+    }
+    return result;
+  }
+
+  int run(const Options& options)
+  {
+    const auto& name = options.ipc;
     glfwSetErrorCallback(glfw_error);
     if (!glfwInit())
       throw std::runtime_error("GLFW initialization failed");
@@ -113,6 +151,16 @@ namespace
     glTexParameteri(GL_TEXTURE_2D, texture_swizzle_blue, GL_RED);
     std::uint32_t texture_width {}, texture_height {};
     int camera_view {};
+    std::unique_ptr<sof::HeadPreview> head;
+    std::string head_error;
+    try
+    {
+      head = std::make_unique<sof::HeadPreview>(options.head);
+    }
+    catch (const std::exception& error)
+    {
+      head_error = error.what();
+    }
     while (!interrupted && !glfwWindowShouldClose(window))
     {
       glfwWaitEventsTimeout(1.0 / 30.0);
@@ -207,21 +255,59 @@ namespace
       if (ImGui::BeginTable("dashboard", 2, ImGuiTableFlags_Resizable))
       {
         ImGui::TableNextColumn();
-        ImGui::SeparatorText("Camera preview");
-        ImGui::Combo("View", &camera_view, "Stereo (packed)\0Left camera\0Right camera\0");
-        if (!preview.luma.empty())
+        ImGui::SeparatorText("Preview");
+        if (ImGui::BeginTabBar("preview"))
         {
-          const float side = std::min(400.0F, ImGui::GetContentRegionAvail().x);
-          const float left = camera_view == 2 ? 0.5F : 0.0F;
-          const float right = camera_view == 1 ? 0.5F : 1.0F;
-          const float height =
-            side * static_cast<float>(preview.height) / static_cast<float>(preview.width);
-          ImGui::Image(static_cast<ImTextureID>(preview_texture), ImVec2(side, height), ImVec2(left, 0),
-            ImVec2(right, 1));
-          ImGui::Text("Frame %llu", static_cast<unsigned long long>(preview.sequence));
+          if (ImGui::BeginTabItem("Blendshapes"))
+          {
+            if (head)
+            {
+              const float side = std::clamp(ImGui::GetContentRegionAvail().x, 64.0F, 400.0F);
+              const auto count =
+                fresh && status.inference_enabled
+                ? std::min<std::size_t>(status.parameter_count, sof::max_parameters)
+                : 0;
+              try
+              {
+                const int render_width = std::clamp(
+                  static_cast<int>(side * ImGui::GetIO().DisplayFramebufferScale.x), 64, 1024
+                );
+                const auto texture = head->render(
+                  std::span(status.parameters.data(), count), render_width, render_width / 2
+                );
+                ImGui::Image(static_cast<ImTextureID>(texture), ImVec2(side, side * 0.5F),
+                  ImVec2(0, 1), ImVec2(1, 0));
+              }
+              catch (const std::exception& error)
+              {
+                head_error = error.what();
+                head.reset();
+              }
+            }
+            if (!head_error.empty())
+              ImGui::TextWrapped("Head preview: %s", head_error.c_str());
+            ImGui::EndTabItem();
+          }
+          if (ImGui::BeginTabItem("Camera"))
+          {
+            ImGui::Combo("View", &camera_view, "Stereo (packed)\0Left camera\0Right camera\0");
+            if (!preview.luma.empty())
+            {
+              const float side = std::min(400.0F, ImGui::GetContentRegionAvail().x);
+              const float left = camera_view == 2 ? 0.5F : 0.0F;
+              const float right = camera_view == 1 ? 0.5F : 1.0F;
+              const float height =
+                side * static_cast<float>(preview.height) / static_cast<float>(preview.width);
+              ImGui::Image(static_cast<ImTextureID>(preview_texture), ImVec2(side, height),
+                ImVec2(left, 0), ImVec2(right, 1));
+              ImGui::Text("Frame %llu", static_cast<unsigned long long>(preview.sequence));
+            }
+            else
+              ImGui::TextUnformatted("Waiting for camera frames...");
+            ImGui::EndTabItem();
+          }
+          ImGui::EndTabBar();
         }
-        else
-          ImGui::TextUnformatted("Waiting for camera frames...");
         ImGui::TableNextColumn();
         ImGui::SeparatorText("Performance");
         ImGui::Text("Capture: %.1f fps    Inference: %.1f fps", status.capture_fps, status.inference_fps);
@@ -257,9 +343,6 @@ namespace
           sof::capture_height, sof::capture_fps, status.config.threads);
         ImGui::TextWrapped("OSC: %s:%u %s", status.config.osc_host.data(), status.config.osc_port,
           status.config.osc_address.data());
-        ImGui::TextUnformatted("Lip input: stereo grayscale, 2 x 100 x 100, scaled to [0, 1]");
-        ImGui::TextUnformatted("Lip output: 37 ordered SRanipal v2 shapes");
-        ImGui::TextUnformatted("Model settings are supplied to the server at startup.");
         ImGui::EndTable();
       }
       ImGui::SeparatorText("Parameters");
@@ -289,6 +372,7 @@ namespace
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
       glfwSwapBuffers(window);
     }
+    head.reset();
     glDeleteTextures(1, &preview_texture);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -305,8 +389,13 @@ int main(int argc, char** argv)
   {
     std::signal(SIGINT, interrupt);
     std::signal(SIGTERM, interrupt);
-    const auto name = channel(argc, argv);
-    return name.empty() ? 0 : run(name);
+    const auto parsed = options(argc, argv);
+    if (parsed.help)
+    {
+      std::cout << "sof-client [--ipc NAME] [--head PATH]\n";
+      return 0;
+    }
+    return run(parsed);
   }
   catch (const std::exception& error)
   {

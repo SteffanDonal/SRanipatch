@@ -167,13 +167,47 @@ endif()
 
 if(SOF_BUILD_CLIENT)
     sof_add_gui()
-    add_executable(sof-client src/client/main.cpp)
-    target_link_libraries(sof-client PRIVATE sof_core sof_imgui)
+    add_library(sof_head_model STATIC src/client/head_model.cpp)
+    target_include_directories(sof_head_model PUBLIC src/client)
+    target_link_libraries(sof_head_model PUBLIC sof_core PRIVATE sof_cgltf)
+    sof_target(sof_head_model)
+    add_executable(sof-client src/client/main.cpp src/client/head_preview.cpp)
+    target_link_libraries(sof-client PRIVATE sof_core sof_imgui sof_head_model)
     sof_target(sof-client)
+    add_custom_command(
+        TARGET sof-client
+        POST_BUILD
+        COMMAND
+            ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/head.glb"
+            "$<TARGET_FILE_DIR:sof-client>/head.glb"
+    )
     install(TARGETS sof-client RUNTIME DESTINATION bin COMPONENT Runtime)
+    install(FILES head.glb DESTINATION bin COMPONENT Runtime)
 endif()
 
 if(BUILD_TESTING)
+    if(SOF_BUILD_CLIENT)
+        add_executable(sof-head-tests tests/head_tests.cpp)
+        target_link_libraries(sof-head-tests PRIVATE sof_head_model)
+        sof_target(sof-head-tests)
+        add_test(
+            NAME head-model
+            COMMAND sof-head-tests "${CMAKE_CURRENT_SOURCE_DIR}/head.glb"
+        )
+        set_tests_properties(head-model PROPERTIES TIMEOUT 20)
+        # Requires a graphics session; run explicitly rather than on headless CI.
+        add_executable(
+            sof-head-render-tests
+            tests/head_render_tests.cpp
+            src/client/head_preview.cpp
+        )
+        target_link_libraries(
+            sof-head-render-tests
+            PRIVATE sof_head_model sof_imgui
+        )
+        sof_target(sof-head-render-tests)
+    endif()
     add_executable(sof-tests tests/core_tests.cpp)
     target_link_libraries(sof-tests PRIVATE sof_core)
     sof_target(sof-tests)

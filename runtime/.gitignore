@@ -8,3 +8,5 @@
 *.profdata
 *.sofdata
 /datasets/
+*.blend*
+!*.blend

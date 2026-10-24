@@ -119,6 +119,20 @@ function(sof_add_opencv)
 endfunction()
 
 function(sof_add_gui)
+    FetchContent_Declare(
+        cgltf
+        GIT_REPOSITORY https://github.com/jkuhlmann/cgltf.git
+        GIT_TAG bbeb5b0b070ddacddac6852fb72143eb68454937
+    )
+    FetchContent_MakeAvailable(cgltf)
+    add_library(sof_cgltf STATIC ${PROJECT_SOURCE_DIR}/src/client/cgltf.c)
+    target_include_directories(sof_cgltf SYSTEM PUBLIC ${cgltf_SOURCE_DIR})
+    install(
+        FILES ${cgltf_SOURCE_DIR}/LICENSE
+        DESTINATION share/licenses
+        RENAME cgltf.txt
+        COMPONENT Runtime
+    )
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
