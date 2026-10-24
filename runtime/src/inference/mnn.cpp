@@ -8,7 +8,6 @@
 #include <array>
 #include <cmath>
 #include <stdexcept>
-#include <string_view>
 #include <vector>
 
 namespace sof
@@ -48,24 +47,15 @@ namespace sof
       HostTensor input_host_, output_host_;
       std::array<std::array<char, 48>, max_parameters> names_ {};
       LipPostprocessor postprocessor_;
-
-      struct Coordinate
-      {
-        std::uint32_t first {}, second {};
-        float weight {};
-      };
-
-      std::array<Coordinate, 100> x_ {}, y_ {};
       std::vector<std::uint8_t> filtered_;
       std::vector<std::uint8_t> filter_scratch_;
-      MedianFilter filter_;
 
     public:
-      Mnn(const Config& config, InferencePrecision precision, MedianFilter filter) : filter_(filter)
+      Mnn(const Config& config, InferencePrecision precision)
       {
         interpreter_.reset(MNN::Interpreter::createFromFile(config.model.data()));
         if (!interpreter_)
-          throw std::runtime_error("Cannot load .mnn model (JSON/NPZ weights need conversion)");
+          throw std::runtime_error("Cannot load .mnn model");
         MNN::ScheduleConfig schedule;
         schedule.type = MNN_FORWARD_CPU;
         schedule.numThread = static_cast<int>(config.threads);
@@ -92,90 +82,43 @@ namespace sof
           throw std::runtime_error("MNN host tensor allocation failed");
         for (std::size_t i = 0; i < lip_parameter_names.size(); ++i)
           set_text(names_[i], lip_parameter_names[i]);
-        const auto fill_coordinates = [](auto& dest, std::uint32_t source) {
-          for (std::size_t i = 0; i < dest.size(); ++i)
-          {
-            const float value =
-              std::clamp((static_cast<float>(i) + 0.5F) * static_cast<float>(source) / 100.0F - 0.5F,
-                0.0F, static_cast<float>(source - 1));
-            const auto first = static_cast<std::uint32_t>(value);
-            dest[i] = { first, std::min(first + 1, source - 1), value - static_cast<float>(first) };
-          }
-        };
-        fill_coordinates(x_, capture_width / 2);
-        fill_coordinates(y_, capture_height);
         interpreter_->releaseModel();
       }
 
       std::uint32_t run(const Frame& frame, std::array<Parameter, max_parameters>& output,
         std::span<float> raw_output) override
       {
-        if (frame.width != capture_width || frame.height != capture_height || frame.luma.size() != static_cast<std::size_t>(capture_width) * capture_height)
-          throw std::runtime_error("Lip inference requires a 400x400 packed stereo luminance frame");
+        if (frame.width != capture_width || frame.height != capture_height || frame.yuyv.size() != static_cast<std::size_t>(capture_width) * capture_height * 2)
+          throw std::runtime_error("Lip inference requires a 400x400 native packed stereo frame");
         auto* dest = input_host_->host<float>();
         constexpr std::size_t plane = std::size_t { 100 } * 100;
-        if (frame.yuyv.size() == static_cast<std::size_t>(capture_width) * capture_height * 2)
+        constexpr std::array<int, 4> cubic { -3, 19, 19, -3 };
+        constexpr std::size_t stereo_width = std::size_t { capture_width } * 2;
+        filtered_.resize(frame.yuyv.size());
+        // SRanipal filters across the stereo seam before cropping either view.
+        filter_scratch_.resize(frame.yuyv.size());
+        pseudo_separable_median_5x5(frame.yuyv, filtered_, filter_scratch_, stereo_width, capture_height);
+        for (std::size_t camera = 0; camera < 2; ++camera)
         {
-          constexpr std::array<int, 4> cubic { -3, 19, 19, -3 };
-          constexpr std::size_t stereo_width = std::size_t { capture_width } * 2;
-          filtered_.resize(frame.yuyv.size());
-          // SRanipal filters across the stereo seam before cropping either view.
-          if (filter_ == MedianFilter::pseudo_separable)
+          for (std::size_t y = 0; y < 100; ++y)
           {
-            filter_scratch_.resize(frame.yuyv.size());
-            pseudo_separable_median_5x5(frame.yuyv, filtered_, filter_scratch_, stereo_width,
-              capture_height);
-          }
-          else
-          {
-            median_filter_5x5(frame.yuyv, filtered_, stereo_width, capture_height);
-          }
-          for (std::size_t camera = 0; camera < 2; ++camera)
-          {
-            for (std::size_t y = 0; y < 100; ++y)
+            for (std::size_t x = 0; x < 100; ++x)
             {
-              for (std::size_t x = 0; x < 100; ++x)
+              int sum {};
+              for (std::size_t ky = 0; ky < cubic.size(); ++ky)
+                for (std::size_t kx = 0; kx < cubic.size(); ++kx)
+                  sum +=
+                    cubic[ky] * cubic[kx] * filtered_[(y * 4 + ky) * stereo_width + camera * capture_width + x * 4 + kx];
+              int pixel {};
+              if (sum > 0)
               {
-                int sum {};
-                for (std::size_t ky = 0; ky < cubic.size(); ++ky)
-                  for (std::size_t kx = 0; kx < cubic.size(); ++kx)
-                    sum += cubic[ky] * cubic[kx] * filtered_[(y * 4 + ky) * stereo_width + camera * capture_width + x * 4 + kx];
-                int pixel {};
-                if (sum > 0)
-                {
-                  pixel = sum >> 10;
-                  const auto remainder = sum & 1023;
-                  if (remainder > 512 || (remainder == 512 && (pixel & 1)))
-                    ++pixel;
-                  pixel = std::min(pixel, 255);
-                }
-                dest[camera * plane + y * 100 + x] = static_cast<float>(pixel) / 255.0F;
+                pixel = sum >> 10;
+                const auto remainder = sum & 1023;
+                if (remainder > 512 || (remainder == 512 && (pixel & 1)))
+                  ++pixel;
+                pixel = std::min(pixel, 255);
               }
-            }
-          }
-        }
-        else
-        {
-          for (std::size_t camera = 0; camera < 2; ++camera)
-          {
-            const auto x_offset = static_cast<std::uint32_t>(camera) * capture_width / 2;
-            for (std::size_t y = 0; y < 100; ++y)
-            {
-              const auto cy = y_[y];
-              for (std::size_t x = 0; x < 100; ++x)
-              {
-                const auto cx = x_[x];
-                const auto pixel = [&](std::uint32_t px, std::uint32_t py) {
-                  return static_cast<float>(
-                    frame.luma[static_cast<std::size_t>(py) * frame.width + x_offset + px]
-                  );
-                };
-                const float top =
-                  std::lerp(pixel(cx.first, cy.first), pixel(cx.second, cy.first), cx.weight);
-                const float bottom =
-                  std::lerp(pixel(cx.first, cy.second), pixel(cx.second, cy.second), cx.weight);
-                dest[camera * plane + y * 100 + x] = std::lerp(top, bottom, cy.weight) / 255.0F;
-              }
+              dest[camera * plane + y * 100 + x] = static_cast<float>(pixel) / 255.0F;
             }
           }
         }
@@ -209,9 +152,8 @@ namespace sof
     };
   }  // namespace
 
-  std::unique_ptr<Inference> open_lip_mnn(const Config& config, InferencePrecision precision,
-    MedianFilter filter)
+  std::unique_ptr<Inference> open_lip_mnn(const Config& config, InferencePrecision precision)
   {
-    return std::make_unique<Mnn>(config, precision, filter);
+    return std::make_unique<Mnn>(config, precision);
   }
 }  // namespace sof

@@ -76,7 +76,6 @@ add_library(
     src/ipc.cpp
     src/osc.cpp
     src/frame.cpp
-    src/dataset.cpp
     src/config.cpp
     src/capture/vive_tracker.cpp
 )
@@ -115,11 +114,7 @@ if(SOF_BUILD_SERVER)
         SYSTEM
         PRIVATE ${sof_opencv_includes}
     )
-    target_link_libraries(
-        sof_inference
-        PUBLIC sof_core
-        PRIVATE MNN opencv_imgproc
-    )
+    target_link_libraries(sof_inference PUBLIC sof_core PRIVATE MNN opencv_core)
     sof_target(sof_inference)
     add_executable(sof-server src/server/main.cpp)
     target_link_libraries(sof-server PRIVATE sof_capture sof_inference MNN)
@@ -136,28 +131,6 @@ if(SOF_BUILD_SERVER)
         DESTINATION share/sranipal-on-frame/models
         COMPONENT Runtime
     )
-    add_executable(sof-capture src/capture/main.cpp)
-    target_link_libraries(sof-capture PRIVATE sof_capture)
-    sof_target(sof-capture)
-    install(TARGETS sof-capture RUNTIME DESTINATION bin COMPONENT Runtime)
-    add_executable(sof-replay src/replay/main.cpp)
-    target_link_libraries(sof-replay PRIVATE sof_inference MNN)
-    sof_target(sof-replay)
-    add_executable(
-        sof-postprocess-replay
-        src/replay/postprocess.cpp
-        src/inference/lip.cpp
-    )
-    target_link_libraries(sof-postprocess-replay PRIVATE sof_core)
-    sof_target(sof-postprocess-replay)
-    if(WIN32)
-        add_executable(sof-sranipal-replay src/replay/sranipal.cpp)
-        target_link_libraries(sof-sranipal-replay PRIVATE sof_core)
-        sof_target(sof-sranipal-replay)
-        add_executable(sof-sranipal-final-replay src/replay/sranipal_final.cpp)
-        target_link_libraries(sof-sranipal-final-replay PRIVATE sof_core)
-        sof_target(sof-sranipal-final-replay)
-    endif()
     install(
         FILES third_party/vivefacialtracker-LICENSE.txt
         DESTINATION share/licenses

@@ -15,12 +15,6 @@
 namespace
 {
   constexpr auto default_precision = sof::InferencePrecision::normal;
-  constexpr auto default_median = sof::MedianFilter::pseudo_separable;
-
-  constexpr std::string_view median_name(sof::MedianFilter filter)
-  {
-    return filter == sof::MedianFilter::exact ? "exact" : "pseudo-separable";
-  }
 
   constexpr std::string_view precision_name(sof::InferencePrecision precision)
   {
@@ -38,10 +32,8 @@ namespace
   {
     sof::Config config;
     sof::InferencePrecision precision { default_precision };
-    sof::MedianFilter median { default_median };
     std::string ipc { "sranipal" };
     bool help {};
-    std::uint32_t seconds {};
   };
 
   template <std::size_t N>
@@ -85,8 +77,6 @@ namespace
         argument_text(options.config.model, value);
       else if (key == "--ipc")
         options.ipc = value;
-      else if (key == "--seconds")
-        options.seconds = number(value, 1, 86400);
       else if (key == "--threads")
         options.config.threads = number(value, 1, 64);
       else if (key == "--precision")
@@ -97,15 +87,6 @@ namespace
           options.precision = sof::InferencePrecision::low;
         else
           throw std::runtime_error("Precision must be normal or low");
-      }
-      else if (key == "--median")
-      {
-        if (value == "exact")
-          options.median = sof::MedianFilter::exact;
-        else if (value == "pseudo-separable")
-          options.median = sof::MedianFilter::pseudo_separable;
-        else
-          throw std::runtime_error("Median filter must be exact or pseudo-separable");
       }
       else if (key == "--osc-host")
         argument_text(options.config.osc_host, value);
@@ -121,10 +102,8 @@ namespace
 
   void usage()
   {
-    std::cout << "sof-server [options]\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --seconds N       Stop after N seconds (optional)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
+    std::cout << "sof-server [options]\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
               << precision_name(default_precision)
-              << ")\n" "  --median MODE     Median filter: exact or pseudo-separable (default "
-              << median_name(default_median)
               << ")\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
   }
 
@@ -138,9 +117,8 @@ namespace
     ipc.publish(status);
     try
     {
-      auto inference = sof::open_lip_mnn(options.config, options.precision, options.median);
+      auto inference = sof::open_lip_mnn(options.config, options.precision);
       std::cout << "MNN CPU precision: " << precision_name(options.precision) << '\n';
-      std::cout << "Median filter: " << median_name(options.median) << '\n';
       sof::OscSender osc(options.config.osc_host.data(),
         static_cast<std::uint16_t>(options.config.osc_port),
         options.config.osc_address.data());
@@ -202,9 +180,7 @@ namespace
       auto rate_time = sof::monotonic_ns();
       std::uint64_t publish_time {};
       std::uint64_t preview_time {};
-      const auto stop_at =
-        options.seconds ? rate_time + static_cast<std::uint64_t>(options.seconds) * 1'000'000'000ULL : 0;
-      while (!interrupted && (!stop_at || sof::monotonic_ns() < stop_at))
+      while (!interrupted)
       {
         if (capture_fault.load(std::memory_order_acquire))
         {
@@ -276,6 +252,8 @@ namespace
   }
 }  // namespace
 
+// Exceptions from the body are caught below; clang-tidy misidentifies MSVC exception inheritance.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv)
 {
   std::cout << std::unitbuf;

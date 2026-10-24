@@ -6,7 +6,5 @@
 *.user
 *.profraw
 *.profdata
-*.sofdata
-/datasets/
 *.blend*
 !*.blend

@@ -1,6 +1,5 @@
 *.user
 *.profraw
 *.profdata
-*.sofdata
 *.blend*
 !*.blend

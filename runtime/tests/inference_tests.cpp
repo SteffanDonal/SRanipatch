@@ -1,18 +1,14 @@
 #include "sof/inference.hpp"
 
-#include "sof/dataset.hpp"
 #include "sof/lip.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -36,37 +32,10 @@ namespace
         frame.luma[static_cast<std::size_t>(y) * frame.width + x] = value;
       }
     }
+    frame.yuyv.resize(static_cast<std::size_t>(frame.width) * frame.height * 2);
+    for (std::size_t i = 0; i < frame.yuyv.size(); ++i)
+      frame.yuyv[i] = static_cast<std::uint8_t>((i % 800 + (i / 800) * 3) % 256);
     return frame;
-  }
-
-  sof::Frame read_pgm(const char* path)
-  {
-    std::ifstream file(path, std::ios::binary);
-    std::string magic;
-    std::uint32_t maximum {};
-    sof::Frame frame;
-    file >> magic >> frame.width >> frame.height >> maximum;
-    require(file && magic == "P5" && frame.width == sof::capture_width && frame.height == sof::capture_height && maximum == 255,
-      "benchmark input must be a binary 400x400 PGM");
-    file.get();
-    frame.luma.resize(static_cast<std::size_t>(frame.width) * frame.height);
-    file.read(reinterpret_cast<char*>(frame.luma.data()), static_cast<std::streamsize>(frame.luma.size()));
-    require(file.gcount() == static_cast<std::streamsize>(frame.luma.size()), "benchmark PGM is incomplete");
-    return frame;
-  }
-
-  double benchmark(sof::Inference& inference, const sof::Frame& frame,
-    std::array<sof::Parameter, sof::max_parameters>& parameters)
-  {
-    constexpr int warmup = 50;
-    constexpr int iterations = 300;
-    for (int i = 0; i < warmup; ++i)
-      inference.run(frame, parameters);
-    const auto begin = std::chrono::steady_clock::now();
-    for (int i = 0; i < iterations; ++i)
-      inference.run(frame, parameters);
-    const auto elapsed = std::chrono::steady_clock::now() - begin;
-    return std::chrono::duration<double, std::milli>(elapsed).count() / iterations;
   }
 
   void test_median_filter()
@@ -76,7 +45,6 @@ namespace
       for (const auto height : { 1, 2, 9, 23, 400 })
       {
         std::vector<std::uint8_t> input(static_cast<std::size_t>(width) * height);
-        std::vector<std::uint8_t> filtered(input.size());
         std::vector<std::uint8_t> separable(input.size()), scratch(input.size());
         std::uint32_t seed = 713;
         for (auto& value : input)
@@ -84,22 +52,18 @@ namespace
           seed = seed * 1664525U + 1013904223U;
           value = static_cast<std::uint8_t>(seed >> 24);
         }
-        sof::median_filter_5x5(input, filtered, static_cast<std::size_t>(width),
-          static_cast<std::size_t>(height));
         sof::pseudo_separable_median_5x5(input, separable, scratch, static_cast<std::size_t>(width),
           static_cast<std::size_t>(height));
         for (int y = 0; y < height; ++y)
         {
           for (int x = 0; x < width; ++x)
           {
-            std::array<std::uint8_t, 25> neighbors {};
             std::array<std::uint8_t, 5> row_medians {};
-            std::size_t i {};
             for (int dy = -2; dy <= 2; ++dy)
             {
               std::array<std::uint8_t, 5> row {};
               for (int dx = -2; dx <= 2; ++dx)
-                row[dx + 2] = neighbors[i++] =
+                row[dx + 2] =
                   input[static_cast<std::size_t>(std::clamp(y + dy, 0, height - 1)) * width + std::clamp(x + dx, 0, width - 1)];
               std::sort(row.begin(), row.end());
               row_medians[dy + 2] = row[2];
@@ -107,9 +71,6 @@ namespace
             std::sort(row_medians.begin(), row_medians.end());
             require(separable[static_cast<std::size_t>(y) * width + x] == row_medians[2],
               "separable median differs from sorted row medians with replicated borders");
-            std::sort(neighbors.begin(), neighbors.end());
-            require(filtered[static_cast<std::size_t>(y) * width + x] == neighbors[12],
-              "median filter differs from a full 5x5 sort with replicated borders");
           }
         }
       }
@@ -188,11 +149,13 @@ namespace
   }
 }  // namespace
 
+// Exceptions from the body are caught below; clang-tidy misidentifies MSVC exception inheritance.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv)
 {
   try
   {
-    require(argc == 2 || argc == 3, "expected lip model path and optional benchmark PGM/dataset");
+    require(argc == 2, "expected lip model path");
     test_median_filter();
     test_tracking_and_tongue();
     test_calibration_reset();
@@ -221,8 +184,65 @@ int main(int argc, char** argv)
     std::array<sof::Parameter, sof::max_parameters> parameters {};
     std::array<float, sof::lip_raw_count> raw_output {};
     inference->run(frame, parameters, raw_output);
-    require(std::abs(raw_output[0] - 0.2056102F) < 0.0001F && std::abs(raw_output[3] - 1.1964159F) < 0.0001F && std::abs(raw_output[12] - 0.9483699F) < 0.0001F && std::abs(raw_output[24] - 2.2418664F) < 0.0001F,
-      "lip model graph output changed");
+    constexpr std::array<float, sof::lip_raw_count> expected { 0.858044505F,
+      0.27993238F,
+      0,
+      0.910982132F,
+      0,
+      0.405989289F,
+      0.274118125F,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.846034288F,
+      0.730406106F,
+      0,
+      0,
+      0,
+      2.23130155F,
+      0,
+      1.15679634F,
+      0,
+      0.118545368F,
+      1.35244107F };
+    for (std::size_t i = 0; i < expected.size(); ++i)
+      require(std::abs(raw_output[i] - expected[i]) < 0.0001F, "lip model graph output changed");
+    for (const auto size : { std::size_t { 0 }, frame.yuyv.size() - 1, frame.yuyv.size() + 1 })
+    {
+      auto invalid = frame;
+      invalid.yuyv.resize(size);
+      bool rejected {};
+      try
+      {
+        inference->run(invalid, parameters);
+      }
+      catch (const std::runtime_error&)
+      {
+        rejected = true;
+      }
+      require(rejected, "missing or malformed packed bytes accepted");
+    }
+    auto wrong_dimensions = frame;
+    --wrong_dimensions.width;
+    bool rejected_dimensions {};
+    try
+    {
+      inference->run(wrong_dimensions, parameters);
+    }
+    catch (const std::runtime_error&)
+    {
+      rejected_dimensions = true;
+    }
+    require(rejected_dimensions, "incorrect packed frame dimensions accepted");
     for (int i = 0; i < 30; ++i)
       require(inference->run(frame, parameters) == 37, "unexpected lip output count");
     require(std::string_view(parameters[0].name.data()) == "jaw_right", "unexpected first output");
@@ -231,42 +251,24 @@ int main(int argc, char** argv)
     for (std::size_t i = 0; i < 37; ++i)
     {
       require(std::isfinite(parameters[i].value), "non-finite lip output");
-      require(parameters[i].value >= 0.0F, "negative lip output");
+      require(parameters[i].value >= 0.0F && parameters[i].value <= 2.0F,
+        "lip output exceeds fixture bounds");
     }
     inference.reset();
 
-    if (argc == 3)
-    {
-      if (std::filesystem::path(argv[2]).extension() == ".sofdata")
-      {
-        sof::DatasetReader dataset(argv[2]);
-        require(dataset.read(frame), "benchmark dataset is empty");
-      }
-      else
-      {
-        frame = read_pgm(argv[2]);
-      }
-    }
-
-    auto normal = sof::open_lip_mnn(config, sof::InferencePrecision::normal);
-    std::array<sof::Parameter, sof::max_parameters> normal_parameters {}, low_parameters {};
-    const double normal_ms = benchmark(*normal, frame, normal_parameters);
-    normal.reset();
     auto low = sof::open_lip_mnn(config, sof::InferencePrecision::low);
-    const double low_ms = benchmark(*low, frame, low_parameters);
-    double absolute_sum {};
-    double maximum_error {};
+    std::array<float, sof::lip_raw_count> low_raw {};
+    frame.luma.clear();
+    for (int iteration = 0; iteration < 31; ++iteration)
+      require(low->run(frame, parameters, low_raw) == sof::lip_parameter_count,
+        "unexpected low precision output count");
+    for (std::size_t i = 0; i < expected.size(); ++i)
+      require(std::isfinite(low_raw[i]) && std::abs(low_raw[i] - expected[i]) < 0.05F,
+        "low precision model output exceeds tolerance");
     for (std::size_t i = 0; i < sof::lip_parameter_count; ++i)
-    {
-      const double error = std::abs(static_cast<double>(normal_parameters[i].value) - static_cast<double>(low_parameters[i].value));
-      absolute_sum += error;
-      maximum_error = std::max(maximum_error, error);
-    }
-    std::cout << std::fixed << std::setprecision(6) << "lip inference contract passed\n"
-              << "normal: " << normal_ms << " ms, low: " << low_ms
-              << " ms, speedup: " << normal_ms / low_ms << "x\n"
-              << "output MAE: " << absolute_sum / sof::lip_parameter_count
-              << ", max error: " << maximum_error << '\n';
+      require(std::isfinite(parameters[i].value) && parameters[i].value >= 0 && parameters[i].value <= 2,
+        "low precision shape exceeds fixture bounds");
+    std::cout << "lip inference contract passed\n";
     return 0;
   }
   catch (const std::exception& error)

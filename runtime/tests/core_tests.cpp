@@ -1,5 +1,4 @@
 #include "sof/config.hpp"
-#include "sof/dataset.hpp"
 #include "sof/frame.hpp"
 #include "sof/ipc.hpp"
 #include "sof/osc.hpp"
@@ -148,42 +147,6 @@ namespace
     require(!latest.pop(consumer, stop.get_token()), "Stopped consumer should not wait for an empty mailbox");
   }
 
-  void dataset_roundtrip()
-  {
-    const auto path = std::filesystem::temp_directory_path() / ("sof-dataset-" + std::to_string(sof::monotonic_ns()) + ".sofdata");
-
-    struct Cleanup
-    {
-      std::filesystem::path path;
-
-      ~Cleanup()
-      {
-        std::error_code error;
-        std::filesystem::remove(path, error);
-      }
-    } cleanup { path };
-
-    sof::Frame expected;
-    expected.width = 2;
-    expected.height = 2;
-    expected.sequence = 42;
-    expected.timestamp_ns = 123456;
-    expected.luma = { 1, 2, 3, 4 };
-    {
-      expected.yuyv = { 1, 9, 2, 8, 3, 7, 4, 6 };
-      sof::DatasetWriter writer(path, expected.width, expected.height, sof::DatasetPixels::yuyv);
-      writer.write(expected);
-      require(writer.frame_count() == 1, "Dataset writer frame count is wrong");
-    }
-    sof::DatasetReader reader(path);
-    require(reader.width() == 2 && reader.height() == 2, "Dataset dimensions differ");
-    sof::Frame actual;
-    require(reader.read(actual), "Dataset frame is missing");
-    require(actual.sequence == expected.sequence && actual.timestamp_ns == expected.timestamp_ns && actual.luma == expected.luma && actual.yuyv == expected.yuyv,
-      "Dataset frame differs");
-    require(!reader.read(actual), "Dataset has an unexpected extra frame");
-  }
-
   void configuration()
   {
     const auto path = std::filesystem::temp_directory_path() / ("sof-config-" + std::to_string(sof::monotonic_ns()) + ".ini");
@@ -308,6 +271,8 @@ namespace
   }
 }  // namespace
 
+// Exceptions from the body are caught below; clang-tidy misidentifies MSVC exception inheritance.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main()
 {
   try
@@ -315,7 +280,6 @@ int main()
     osc_encoding();
     udp_delivery();
     frames();
-    dataset_roundtrip();
     configuration();
     tracker_commands();
     ipc_roundtrip();

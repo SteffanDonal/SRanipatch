@@ -56,7 +56,7 @@ function(sof_add_opencv)
     set(CMAKE_WARN_DEPRECATED OFF)
     set(sof_executable_output_path "${EXECUTABLE_OUTPUT_PATH}")
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-    set(BUILD_LIST core,imgproc CACHE STRING "" FORCE)
+    set(BUILD_LIST core CACHE STRING "" FORCE)
     set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(BUILD_PERF_TESTS OFF CACHE BOOL "" FORCE)
     set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -109,7 +109,6 @@ function(sof_add_opencv)
     )
     set(sof_opencv_includes
         "${opencv_SOURCE_DIR}/modules/core/include"
-        "${opencv_SOURCE_DIR}/modules/imgproc/include"
         "${CMAKE_BINARY_DIR}"
         PARENT_SCOPE
     )
