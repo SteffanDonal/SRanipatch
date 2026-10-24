@@ -346,19 +346,32 @@ namespace
         ImGui::EndTable();
       }
       ImGui::SeparatorText("Parameters");
-      if (ImGui::BeginTable("parameters", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY,
+      if (ImGui::BeginTable("parameters", 3, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_ScrollY,
             ImVec2(0, 0)))
       {
-        ImGui::TableSetupColumn("Name");
-        ImGui::TableSetupColumn("Value");
-        ImGui::TableHeadersRow();
-        for (std::size_t i = 0; i < status.parameter_count; ++i)
+        const auto count = std::min<std::size_t>(status.parameter_count, sof::max_parameters);
+        for (std::size_t i = 0; i < count; ++i)
         {
-          ImGui::TableNextRow();
           ImGui::TableNextColumn();
-          ImGui::TextUnformatted(status.parameters[i].name.data());
-          ImGui::TableNextColumn();
-          ImGui::Text("%.6f", status.parameters[i].value);
+          ImGui::PushID(static_cast<int>(i));
+          float value = status.parameters[i].value;
+          ImGui::SetNextItemWidth(-1.0F);
+          ImGui::BeginDisabled();
+          ImGui::SliderFloat("##value", &value, 0.0F, 1.0F, "", ImGuiSliderFlags_NoInput);
+          ImGui::EndDisabled();
+          const auto min = ImGui::GetItemRectMin();
+          const auto max = ImGui::GetItemRectMax();
+          const auto* label = status.parameters[i].name.data();
+          const auto size = ImGui::CalcTextSize(label);
+          const ImVec4 clip(min.x, min.y, max.x, max.y);
+          ImGui::GetWindowDrawList()->AddText(
+            ImGui::GetFont(), ImGui::GetFontSize(),
+            ImVec2(min.x + ImGui::GetStyle().FramePadding.x,
+              min.y + (max.y - min.y - size.y) * 0.5F),
+            ImGui::GetColorU32(ImGuiCol_Text), label, nullptr, 0.0F,
+            &clip
+          );
+          ImGui::PopID();
         }
         ImGui::EndTable();
       }
