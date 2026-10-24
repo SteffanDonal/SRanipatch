@@ -7,9 +7,9 @@
 #include <string_view>
 #include <type_traits>
 
-namespace sof
+namespace sranipatch
 {
-  inline constexpr std::uint32_t protocol_magic = 0x534F4631;
+  inline constexpr std::uint32_t protocol_magic = 0x53525031;
   inline constexpr std::uint32_t protocol_version = 7;
   inline constexpr std::size_t max_parameters = 128;
   inline constexpr std::uint32_t capture_width = 400;
@@ -102,4 +102,4 @@ namespace sof
   static_assert(sizeof(SharedBlock) == 167480);
   static_assert(offsetof(SharedBlock, status) == 16);
   static_assert(offsetof(SharedBlock, preview) == 7464);
-}  // namespace sof
+}  // namespace sranipatch

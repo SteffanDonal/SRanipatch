@@ -1,6 +1,6 @@
-#include "sof/capture.hpp"
-#include "sof/protocol.hpp"
-#include "sof/vive_tracker.hpp"
+#include "sranipatch/capture.hpp"
+#include "sranipatch/protocol.hpp"
+#include "sranipatch/vive_tracker.hpp"
 
 #include <windows.h>
 #include <cfgmgr32.h>
@@ -25,7 +25,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace sof
+namespace sranipatch
 {
   namespace
   {
@@ -397,6 +397,8 @@ namespace sof
           std::cerr << "Media Foundation: drained " << stale_ << " stale frame(s)\n";
       }
 
+      // Mutex failure during teardown is unrecoverable; terminate rather than escape the destructor.
+      // NOLINTNEXTLINE(bugprone-exception-escape)
       void shutdown() noexcept
       {
         if (reader_)
@@ -655,4 +657,4 @@ namespace sof
     DeviceArrival arrival;
     arrival.wait(std::move(stop), new_arrival_required);
   }
-}  // namespace sof
+}  // namespace sranipatch

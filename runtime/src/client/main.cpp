@@ -1,5 +1,5 @@
 #include "head_preview.hpp"
-#include "sof/ipc.hpp"
+#include "sranipatch/ipc.hpp"
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -27,19 +27,19 @@ namespace
     interrupted = 1;
   }
 
-  const char* state_name(sof::ServerState state)
+  const char* state_name(sranipatch::ServerState state)
   {
     switch (state)
     {
-      case sof::ServerState::starting:
+      case sranipatch::ServerState::starting:
         return "Starting";
-      case sof::ServerState::waiting_for_camera:
+      case sranipatch::ServerState::waiting_for_camera:
         return "Waiting for camera";
-      case sof::ServerState::running:
+      case sranipatch::ServerState::running:
         return "Running";
-      case sof::ServerState::stopped:
+      case sranipatch::ServerState::stopped:
         return "Stopped";
-      case sof::ServerState::fault:
+      case sranipatch::ServerState::fault:
         return "Fault";
     }
     return "Unknown";
@@ -68,7 +68,7 @@ namespace
 
   struct Options
   {
-    std::string ipc { "sranipal" };
+    std::string ipc { "sranipatch" };
     std::filesystem::path head { default_head_path() };
     bool help {};
   };
@@ -105,7 +105,7 @@ namespace
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    GLFWwindow* window = glfwCreateWindow(900, 720, "SRanipal on Frame", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(900, 720, "SRanipatch", nullptr, nullptr);
     if (!window)
     {
       glfwTerminate();
@@ -124,14 +124,14 @@ namespace
       glfwTerminate();
       throw std::runtime_error("GUI renderer initialization failed");
     }
-    std::unique_ptr<sof::SharedMemory> ipc;
-    sof::Status status;
+    std::unique_ptr<sranipatch::SharedMemory> ipc;
+    sranipatch::Status status;
     std::string connection_message { "Waiting for server" };
     std::uint64_t retry_at {}, session {};
     std::array<float, 120> rates {};
     std::size_t graph_index {};
     std::uint64_t graph_at {};
-    sof::Frame preview;
+    sranipatch::Frame preview;
     GLuint preview_texture {};
     glGenTextures(1, &preview_texture);
     glBindTexture(GL_TEXTURE_2D, preview_texture);
@@ -147,11 +147,11 @@ namespace
     glTexParameteri(GL_TEXTURE_2D, texture_swizzle_blue, GL_RED);
     std::uint32_t texture_width {}, texture_height {};
     int camera_view {};
-    std::unique_ptr<sof::HeadPreview> head;
+    std::unique_ptr<sranipatch::HeadPreview> head;
     std::string head_error;
     try
     {
-      head = std::make_unique<sof::HeadPreview>(options.head);
+      head = std::make_unique<sranipatch::HeadPreview>(options.head);
     }
     catch (const std::exception& error)
     {
@@ -160,13 +160,14 @@ namespace
     while (!interrupted && !glfwWindowShouldClose(window))
     {
       glfwWaitEventsTimeout(1.0 / 30.0);
-      const auto now = sof::monotonic_ns();
+      const auto now = sranipatch::monotonic_ns();
       if (!ipc && now >= retry_at)
       {
         retry_at = now + 1'000'000'000ULL;
         try
         {
-          ipc = std::make_unique<sof::SharedMemory>(name, sof::SharedMemory::Role::client);
+          ipc =
+            std::make_unique<sranipatch::SharedMemory>(name, sranipatch::SharedMemory::Role::client);
         }
         catch (const std::exception& error)
         {
@@ -179,7 +180,7 @@ namespace
         try
         {
           ipc->read(status);
-          const auto observed_at = sof::monotonic_ns();
+          const auto observed_at = sranipatch::monotonic_ns();
           fresh = status.heartbeat_ns && observed_at >= status.heartbeat_ns && observed_at - status.heartbeat_ns < 2'000'000'000ULL;
           if (session != status.session_id)
           {
@@ -205,7 +206,7 @@ namespace
                 preview.luma.data());
           }
           // Windows mappings disappear when all handles close; reopen after a server exits.
-          if (!fresh || status.state == sof::ServerState::fault || status.state == sof::ServerState::stopped)
+          if (!fresh || status.state == sranipatch::ServerState::fault || status.state == sranipatch::ServerState::stopped)
           {
             connection_message = "Server is offline or its heartbeat is stale";
             ipc.reset();
@@ -251,9 +252,8 @@ namespace
             {
               const float side = std::clamp(ImGui::GetContentRegionAvail().x, 64.0F, 400.0F);
               const auto count =
-                fresh
-                ? std::min<std::size_t>(status.parameter_count, sof::max_parameters)
-                : 0;
+                fresh ? std::min<std::size_t>(status.parameter_count, sranipatch::max_parameters)
+                      : 0;
               try
               {
                 const int render_width = std::clamp(
@@ -306,8 +306,8 @@ namespace
         ImGui::PlotLines("Inference FPS", rates.data(), static_cast<int>(rates.size()),
           static_cast<int>(graph_index), nullptr, 0.0F, 120.0F, ImVec2(0, 80));
         ImGui::SeparatorText("Configuration");
-        ImGui::Text("VIVE Facial Tracker: %ux%u @ %u fps    MNN threads: %u", sof::capture_width,
-          sof::capture_height, sof::capture_fps, status.config.threads);
+        ImGui::Text("VIVE Facial Tracker: %ux%u @ %u fps    MNN threads: %u", sranipatch::capture_width,
+          sranipatch::capture_height, sranipatch::capture_fps, status.config.threads);
         ImGui::TextWrapped("OSC: %s:%u %s", status.config.osc_host.data(), status.config.osc_port,
           status.config.osc_address.data());
         ImGui::EndTable();
@@ -315,7 +315,7 @@ namespace
       ImGui::SeparatorText("Parameters");
       if (ImGui::BeginChild("parameters"))
       {
-        const auto count = std::min<std::size_t>(status.parameter_count, sof::max_parameters);
+        const auto count = std::min<std::size_t>(status.parameter_count, sranipatch::max_parameters);
         bool has_group = false;
         for (int group = 0; group < 3; ++group)
         {
@@ -384,6 +384,8 @@ namespace
   }
 }  // namespace
 
+// Exceptions from the body are caught below; clang-tidy misidentifies MSVC exception inheritance.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv)
 {
   try
@@ -393,7 +395,7 @@ int main(int argc, char** argv)
     const auto parsed = options(argc, argv);
     if (parsed.help)
     {
-      std::cout << "sof-client [--ipc NAME] [--head PATH]\n";
+      std::cout << "sranipatch-client [--ipc NAME] [--head PATH]\n";
       return 0;
     }
     return run(parsed);

@@ -1,12 +1,12 @@
 #pragma once
 
-#include "sof/protocol.hpp"
+#include "sranipatch/protocol.hpp"
 
 #include <filesystem>
 #include <memory>
 #include <span>
 
-namespace sof
+namespace sranipatch
 {
   class HeadPreview
   {
@@ -21,4 +21,4 @@ namespace sof
     struct Impl;
     std::unique_ptr<Impl> impl_;
   };
-}  // namespace sof
+}  // namespace sranipatch

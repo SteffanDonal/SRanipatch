@@ -56,6 +56,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y ninja-build
-      - run: cmake --preset linux-debug -DSOF_BUILD_SERVER=OFF -DSOF_BUILD_CLIENT=OFF
+      - run: cmake --preset linux-debug -DSRANIPATCH_BUILD_SERVER=OFF -DSRANIPATCH_BUILD_CLIENT=OFF
       - run: cmake --build --preset linux-debug --parallel 2
       - run: ctest --preset linux-debug

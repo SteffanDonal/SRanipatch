@@ -1,6 +1,6 @@
 #include "head_model.hpp"
 
-#include "sof/lip.hpp"
+#include "sranipatch/lip.hpp"
 
 #include <cgltf.h>
 
@@ -10,7 +10,7 @@
 #include <memory>
 #include <stdexcept>
 
-namespace sof
+namespace sranipatch
 {
   namespace
   {
@@ -190,4 +190,4 @@ namespace sof
           component /= std::sqrt(length);
     }
   }
-}  // namespace sof
+}  // namespace sranipatch

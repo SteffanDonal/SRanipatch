@@ -1,7 +1,7 @@
 include(FetchContent)
 
 # Immutable revisions; FetchContent source overrides also allow offline/vendor builds.
-function(sof_add_mnn)
+function(sranipatch_add_mnn)
     # MNN enables ASM on MSVC without compiling assembler sources.
     set(CMAKE_POLICY_DEFAULT_CMP0194 OLD)
     set(MNN_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
@@ -46,7 +46,7 @@ function(sof_add_mnn)
     set(mnn_SOURCE_DIR "${mnn_SOURCE_DIR}" PARENT_SCOPE)
 endfunction()
 
-function(sof_add_opencv)
+function(sranipatch_add_opencv)
     set(CMAKE_POLICY_DEFAULT_CMP0177 NEW)
     set(CMAKE_POLICY_DEFAULT_CMP0218 OLD)
     if(POLICY CMP0218)
@@ -54,7 +54,7 @@ function(sof_add_opencv)
     endif()
     # OpenCV explicitly selects deprecated policies for compatibility.
     set(CMAKE_WARN_DEPRECATED OFF)
-    set(sof_executable_output_path "${EXECUTABLE_OUTPUT_PATH}")
+    set(sranipatch_executable_output_path "${EXECUTABLE_OUTPUT_PATH}")
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     set(BUILD_LIST core CACHE STRING "" FORCE)
     set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -93,9 +93,9 @@ function(sof_add_opencv)
         GIT_PROGRESS TRUE
     )
     FetchContent_MakeAvailable(opencv)
-    if(sof_executable_output_path)
+    if(sranipatch_executable_output_path)
         set(EXECUTABLE_OUTPUT_PATH
-            "${sof_executable_output_path}"
+            "${sranipatch_executable_output_path}"
             CACHE PATH
             ""
             FORCE
@@ -107,7 +107,7 @@ function(sof_add_opencv)
         DIRECTORY "${opencv_SOURCE_DIR}"
         PROPERTY EXCLUDE_FROM_ALL TRUE
     )
-    set(sof_opencv_includes
+    set(sranipatch_opencv_includes
         "${opencv_SOURCE_DIR}/modules/core/include"
         "${CMAKE_BINARY_DIR}"
         PARENT_SCOPE
@@ -126,15 +126,23 @@ function(sof_add_opencv)
     )
 endfunction()
 
-function(sof_add_gui)
+function(sranipatch_add_gui)
     FetchContent_Declare(
         cgltf
         GIT_REPOSITORY https://github.com/jkuhlmann/cgltf.git
         GIT_TAG bbeb5b0b070ddacddac6852fb72143eb68454937
     )
     FetchContent_MakeAvailable(cgltf)
-    add_library(sof_cgltf STATIC ${PROJECT_SOURCE_DIR}/src/client/cgltf.c)
-    target_include_directories(sof_cgltf SYSTEM PUBLIC ${cgltf_SOURCE_DIR})
+    add_library(
+        sranipatch_cgltf
+        STATIC
+        ${PROJECT_SOURCE_DIR}/src/client/cgltf.c
+    )
+    target_include_directories(
+        sranipatch_cgltf
+        SYSTEM
+        PUBLIC ${cgltf_SOURCE_DIR}
+    )
     install(
         FILES ${cgltf_SOURCE_DIR}/LICENSE
         DESTINATION share/licenses
@@ -164,7 +172,7 @@ function(sof_add_gui)
     FetchContent_MakeAvailable(glfw imgui)
     find_package(OpenGL REQUIRED)
     add_library(
-        sof_imgui
+        sranipatch_imgui
         STATIC
         ${imgui_SOURCE_DIR}/imgui.cpp
         ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -174,11 +182,11 @@ function(sof_add_gui)
         ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
     )
     target_include_directories(
-        sof_imgui
+        sranipatch_imgui
         SYSTEM
         PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends
     )
-    target_link_libraries(sof_imgui PUBLIC glfw OpenGL::GL)
+    target_link_libraries(sranipatch_imgui PUBLIC glfw OpenGL::GL)
     install(
         FILES ${imgui_SOURCE_DIR}/LICENSE.txt
         DESTINATION share/licenses

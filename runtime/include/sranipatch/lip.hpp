@@ -6,7 +6,7 @@
 #include <span>
 #include <string_view>
 
-namespace sof
+namespace sranipatch
 {
   void pseudo_separable_median_5x5(std::span<const std::uint8_t> input, std::span<std::uint8_t> output,
     std::span<std::uint8_t> scratch, std::size_t width, std::size_t height);
@@ -73,4 +73,4 @@ namespace sof
     std::array<float, 33> smoothed_ {};
     std::array<float, 33> smoothing_weights_ {};
   };
-}  // namespace sof
+}  // namespace sranipatch

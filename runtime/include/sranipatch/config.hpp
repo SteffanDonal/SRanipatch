@@ -1,11 +1,11 @@
 #pragma once
 
-#include "sof/protocol.hpp"
+#include "sranipatch/protocol.hpp"
 
 #include <filesystem>
 
-namespace sof
+namespace sranipatch
 {
   std::filesystem::path default_config_path();
   bool load_osc_config(const std::filesystem::path& path, Config& config);
-}  // namespace sof
+}  // namespace sranipatch

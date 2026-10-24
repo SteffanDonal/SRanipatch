@@ -1,4 +1,6 @@
-# SRanipal on Frame
+# SRanipatch
+
+Unofficial SRanipal runtime for the VIVE Facial Tracker & VRCFT on Windows and Steam Frame
 
 C++20 server and Dear ImGui client. The server owns capture, MNN CPU inference and OSC UDP output. The client reads status and parameters through local mapped memory.
 
@@ -27,27 +29,27 @@ cmake --build --preset linux-release --parallel
 ctest --preset linux-release
 ```
 
-Set `-DSOF_BUILD_CLIENT=OFF` for a headless server. The `linux-aarch64` preset cross-compiles the server using `aarch64-linux-gnu-gcc/g++`; `SOF_SYSROOT` can point to a deployment sysroot. Build the GUI natively on ARM64 or supply target graphics dependencies when cross-compiling it. Release builds enable application LTO when supported; no host-specific CPU flags are applied.
+Set `-DSRANIPATCH_BUILD_CLIENT=OFF` for a headless server. The `linux-aarch64` preset cross-compiles the server using `aarch64-linux-gnu-gcc/g++`; `SRANIPATCH_SYSROOT` can point to a deployment sysroot. Build the GUI natively on ARM64 or supply target graphics dependencies when cross-compiling it. Release builds enable application LTO when supported; no host-specific CPU flags are applied.
 
 Stage deployment files with `cmake --install build/<preset> --config Release --component Runtime --prefix build/package`. This includes dependency notices and the MSVC runtime on Windows. Linux deployments need compatible system libraries; the GUI requires OpenGL 3.3. CPack configurations produce ZIP/TGZ archives.
 
 ## Run
 
 ```sh
-sof-server
-sof-client
+sranipatch-server
+sranipatch-client
 ```
 
-Run `sof-server --help` for model, OSC and IPC options. Both processes must use the same `--ipc` name. Model configuration is supplied at server startup.
+Run `sranipatch-server --help` for model, OSC and IPC options. Both processes must use the same `--ipc` name. Model configuration is supplied at server startup.
 
-The client previews live lip blendshapes using `head.glb` beside its executable. `sof-client --head PATH` selects another model. The Blendshapes tab shows the head preview; the Camera tab shows the tracker image.
+The client previews live lip blendshapes using `head.glb` beside its executable. `sranipatch-client --head PATH` selects another model. The Blendshapes tab shows the head preview; the Camera tab shows the tracker image.
 
-The server reads OSC defaults from `~/.config/sranipal-on-frame/config.ini` on Linux, or `%APPDATA%\sranipal-on-frame\config.ini` on Windows. Command-line options override the file. Supported keys are:
+The server reads OSC defaults from `~/.config/sranipatch/config.ini` on Linux, or `%APPDATA%\sranipatch\config.ini` on Windows. Command-line options override the file. Supported keys are:
 
 ```ini
 osc_host=127.0.0.1
 osc_port=9000
-osc_address=/sranipal/parameters
+osc_address=/sranipatch/parameters
 ```
 
 Linux GUI builds include both GLFW Wayland and X11 backends. GLFW normally selects the backend from the session environment. On Steam Frame with Gamescope 3.16.28, use Gamescope's XWayland display because its native `xdg-shell` path currently does not route mouse and close events reliably. `sh scripts/run-linux.sh` selects that path, starts the lip-inference server and client together, and always stops the server when the client exits or the job is interrupted.
@@ -57,8 +59,8 @@ Arguments to `scripts/run-linux.sh` are forwarded to the server. For example, `s
 For the VIVE Facial Tracker on Windows:
 
 ```powershell
-./build/windows-x64/Release/sof-server.exe
-./build/windows-x64/Release/sof-client.exe
+./build/windows-x64/Release/sranipatch-server.exe
+./build/windows-x64/Release/sranipatch-client.exe
 ```
 
 Capture supports the VIVE Facial Tracker on Windows and Linux. The tracker must be accessible to the current user. Camera previews and tracking resume automatically after reconnection.

@@ -1,4 +1,4 @@
-#include "sof/osc.hpp"
+#include "sranipatch/osc.hpp"
 
 #include <bit>
 #include <cstddef>
@@ -13,7 +13,7 @@
 #include <unistd.h>
 #endif
 
-namespace sof
+namespace sranipatch
 {
   namespace
   {
@@ -134,4 +134,4 @@ namespace sof
 #endif
     return sent >= 0 && static_cast<std::size_t>(sent) == impl_->packet.size();
   }
-}  // namespace sof
+}  // namespace sranipatch

@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-namespace sof
+namespace sranipatch
 {
   std::vector<std::uint8_t> encode_osc(std::string_view address, std::span<const float> values);
 
@@ -23,4 +23,4 @@ namespace sof
     struct Impl;
     std::unique_ptr<Impl> impl_;
   };
-}  // namespace sof
+}  // namespace sranipatch

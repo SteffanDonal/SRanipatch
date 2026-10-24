@@ -1,6 +1,6 @@
-#include "sof/inference.hpp"
+#include "sranipatch/inference.hpp"
 
-#include "sof/lip.hpp"
+#include "sranipatch/lip.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -18,11 +18,11 @@ namespace
       throw std::runtime_error(std::string(message));
   }
 
-  sof::Frame test_frame()
+  sranipatch::Frame test_frame()
   {
-    sof::Frame frame;
-    frame.width = sof::capture_width;
-    frame.height = sof::capture_height;
+    sranipatch::Frame frame;
+    frame.width = sranipatch::capture_width;
+    frame.height = sranipatch::capture_height;
     frame.luma.resize(static_cast<std::size_t>(frame.width) * frame.height);
     for (std::uint32_t y = 0; y < frame.height; ++y)
     {
@@ -52,8 +52,9 @@ namespace
           seed = seed * 1664525U + 1013904223U;
           value = static_cast<std::uint8_t>(seed >> 24);
         }
-        sof::pseudo_separable_median_5x5(input, separable, scratch, static_cast<std::size_t>(width),
-          static_cast<std::size_t>(height));
+        sranipatch::pseudo_separable_median_5x5(
+          input, separable, scratch, static_cast<std::size_t>(width), static_cast<std::size_t>(height)
+        );
         for (int y = 0; y < height; ++y)
         {
           for (int x = 0; x < width; ++x)
@@ -79,8 +80,8 @@ namespace
 
   void test_tracking_and_tongue()
   {
-    sof::LipPostprocessor postprocessor;
-    std::array<float, sof::lip_raw_count> raw {};
+    sranipatch::LipPostprocessor postprocessor;
+    std::array<float, sranipatch::lip_raw_count> raw {};
     raw[0] = 1.0F;
     raw[1] = raw[5] = raw[6] = 0.5F;
     raw[3] = 0.2F;
@@ -129,10 +130,10 @@ namespace
           0.482305378F } },
     } };
     constexpr std::array<std::size_t, 7> indices { 0, 1, 2, 5, 6, 7, 8 };
-    sof::LipPostprocessor postprocessor;
+    sranipatch::LipPostprocessor postprocessor;
     for (unsigned frame = 0; frame < 1200; ++frame)
     {
-      std::array<float, sof::lip_raw_count> raw {};
+      std::array<float, sranipatch::lip_raw_count> raw {};
       for (std::size_t i = 0; i < raw.size(); ++i)
         raw[i] = static_cast<float>((frame * (i * 2 + 1) + i * 37) % 997) / 997.0F;
       const auto phase = frame % 600;
@@ -160,15 +161,15 @@ int main(int argc, char** argv)
     test_tracking_and_tongue();
     test_calibration_reset();
 
-    sof::LipPostprocessor postprocessor;
-    std::array<float, sof::lip_raw_count> raw {};
+    sranipatch::LipPostprocessor postprocessor;
+    std::array<float, sranipatch::lip_raw_count> raw {};
     raw[0] = 1.0F;
     raw[1] = 0.25F;
     raw[2] = 0.8F;
     raw[3] = 0.8F;
     raw[5] = 0.25F;
     raw[6] = 0.75F;
-    std::array<float, sof::lip_parameter_count> shaped {};
+    std::array<float, sranipatch::lip_parameter_count> shaped {};
     for (int i = 0; i < 30; ++i)
       shaped = postprocessor.process(raw);
     require(shaped[0] > 0.0F && shaped[1] == 0.0F, "jaw axis split is wrong");
@@ -176,15 +177,15 @@ int main(int argc, char** argv)
     require(shaped[7] == 0.0F && shaped[8] > 0.0F, "lower-mouth axis split is wrong");
     require(shaped[2] > 0.0F && shaped[3] > 0.0F, "direct lip shapes are missing");
 
-    sof::Config config;
-    sof::set_text(config.model, argv[1]);
-    auto inference = sof::open_lip_mnn(config);
-    sof::Frame frame = test_frame();
+    sranipatch::Config config;
+    sranipatch::set_text(config.model, argv[1]);
+    auto inference = sranipatch::open_lip_mnn(config);
+    sranipatch::Frame frame = test_frame();
 
-    std::array<sof::Parameter, sof::max_parameters> parameters {};
-    std::array<float, sof::lip_raw_count> raw_output {};
+    std::array<sranipatch::Parameter, sranipatch::max_parameters> parameters {};
+    std::array<float, sranipatch::lip_raw_count> raw_output {};
     inference->run(frame, parameters, raw_output);
-    constexpr std::array<float, sof::lip_raw_count> expected { 0.858044505F,
+    constexpr std::array<float, sranipatch::lip_raw_count> expected { 0.858044505F,
       0.27993238F,
       0,
       0.910982132F,
@@ -256,16 +257,16 @@ int main(int argc, char** argv)
     }
     inference.reset();
 
-    auto low = sof::open_lip_mnn(config, sof::InferencePrecision::low);
-    std::array<float, sof::lip_raw_count> low_raw {};
+    auto low = sranipatch::open_lip_mnn(config, sranipatch::InferencePrecision::low);
+    std::array<float, sranipatch::lip_raw_count> low_raw {};
     frame.luma.clear();
     for (int iteration = 0; iteration < 31; ++iteration)
-      require(low->run(frame, parameters, low_raw) == sof::lip_parameter_count,
+      require(low->run(frame, parameters, low_raw) == sranipatch::lip_parameter_count,
         "unexpected low precision output count");
     for (std::size_t i = 0; i < expected.size(); ++i)
       require(std::isfinite(low_raw[i]) && std::abs(low_raw[i] - expected[i]) < 0.05F,
         "low precision model output exceeds tolerance");
-    for (std::size_t i = 0; i < sof::lip_parameter_count; ++i)
+    for (std::size_t i = 0; i < sranipatch::lip_parameter_count; ++i)
       require(std::isfinite(parameters[i].value) && parameters[i].value >= 0 && parameters[i].value <= 2,
         "low precision shape exceeds fixture bounds");
     std::cout << "lip inference contract passed\n";

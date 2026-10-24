@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <span>
 
-namespace sof
+namespace sranipatch
 {
   // Transport for UVC extension unit 4, selector 2. Windows uses IKsControl;
   // Linux can supply UVCIOC_CTRL_QUERY without changing the device protocol.
@@ -19,4 +19,4 @@ namespace sof
 
   void enable_vive_tracker(TrackerExtension& extension);
   void disable_vive_tracker(TrackerExtension& extension);
-}  // namespace sof
+}  // namespace sranipatch

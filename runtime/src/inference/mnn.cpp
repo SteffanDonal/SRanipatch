@@ -1,5 +1,5 @@
-#include "sof/inference.hpp"
-#include "sof/lip.hpp"
+#include "sranipatch/inference.hpp"
+#include "sranipatch/lip.hpp"
 
 #include <MNN/Interpreter.hpp>
 #include <MNN/Tensor.hpp>
@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace sof
+namespace sranipatch
 {
   namespace
   {
@@ -156,4 +156,4 @@ namespace sof
   {
     return std::make_unique<Mnn>(config, precision);
   }
-}  // namespace sof
+}  // namespace sranipatch

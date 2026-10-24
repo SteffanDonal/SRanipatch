@@ -29,18 +29,18 @@
     {
       "name": "linux-debug",
       "inherits": "linux-release",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "SOF_SANITIZE": "ON" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "SRANIPATCH_SANITIZE": "ON" }
     },
     {
       "name": "linux-aarch64",
       "inherits": "linux-release",
       "toolchainFile": "${sourceDir}/cmake/toolchains/linux-aarch64.cmake",
-      "cacheVariables": { "SOF_BUILD_CLIENT": "OFF", "BUILD_TESTING": "OFF" }
+      "cacheVariables": { "SRANIPATCH_BUILD_CLIENT": "OFF", "BUILD_TESTING": "OFF" }
     },
     {
       "name": "windows-core",
       "inherits": "windows-x64",
-      "cacheVariables": { "SOF_BUILD_SERVER": "OFF", "SOF_BUILD_CLIENT": "OFF" }
+      "cacheVariables": { "SRANIPATCH_BUILD_SERVER": "OFF", "SRANIPATCH_BUILD_CLIENT": "OFF" }
     }
   ],
   "buildPresets": [

@@ -1,6 +1,6 @@
-#include "sof/capture.hpp"
-#include "sof/protocol.hpp"
-#include "sof/vive_tracker.hpp"
+#include "sranipatch/capture.hpp"
+#include "sranipatch/protocol.hpp"
+#include "sranipatch/vive_tracker.hpp"
 
 #include <fcntl.h>
 #include <linux/netlink.h>
@@ -20,7 +20,7 @@
 #include <iostream>
 #include <stdexcept>
 
-namespace sof
+namespace sranipatch
 {
   namespace
   {
@@ -461,4 +461,4 @@ namespace sof
       }
     }
   }
-}  // namespace sof
+}  // namespace sranipatch

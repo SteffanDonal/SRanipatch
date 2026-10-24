@@ -1,4 +1,4 @@
-#include "sof/lip.hpp"
+#include "sranipatch/lip.hpp"
 
 #include <opencv2/core/hal/intrin.hpp>
 
@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <type_traits>
 
-namespace sof
+namespace sranipatch
 {
   namespace
   {
@@ -87,4 +87,4 @@ namespace sof
         dest[x] = median5(rows[0][x], rows[1][x], rows[2][x], rows[3][x], rows[4][x]);
     }
   }
-}  // namespace sof
+}  // namespace sranipatch

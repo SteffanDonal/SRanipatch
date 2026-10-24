@@ -1,4 +1,4 @@
-#include "sof/ipc.hpp"
+#include "sranipatch/ipc.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -16,7 +16,7 @@
 #include <cerrno>
 #endif
 
-namespace sof
+namespace sranipatch
 {
   struct SharedMemory::Impl
   {
@@ -103,7 +103,7 @@ namespace sof
       throw std::runtime_error("IPC name must contain 1-64 letters, digits, '_' or '-'");
     const bool server = role == Role::server;
 #ifdef _WIN32
-    const auto base = std::string("Local\\sof-") + name;
+    const auto base = std::string("Local\\sranipatch-") + name;
     if (server)
     {
       impl_->owner = CreateMutexA(nullptr, FALSE, (base + "-owner").c_str());
@@ -131,7 +131,7 @@ namespace sof
     if (!impl_->block)
       throw std::runtime_error("Cannot map server shared memory");
 #else
-    const auto base = "/sof-" + std::to_string(getuid()) + "-" + name;
+    const auto base = "/sranipatch-" + std::to_string(getuid()) + "-" + name;
     auto open_region = [](const std::string& path, bool create) {
       const int fd = shm_open(path.c_str(), O_RDWR | O_CLOEXEC | (create ? O_CREAT : 0), 0600);
       if (fd < 0)
@@ -255,4 +255,4 @@ namespace sof
     frame.sequence = preview.sequence;
     return true;
   }
-}  // namespace sof
+}  // namespace sranipatch

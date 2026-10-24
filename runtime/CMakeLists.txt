@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(sranipal_on_frame VERSION 0.1.0 LANGUAGES C CXX)
+project(sranipatch VERSION 0.1.0 LANGUAGES C CXX)
 
 if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message(FATAL_ERROR "Supported platforms are Windows and Linux")
@@ -14,51 +14,61 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
-option(SOF_BUILD_SERVER "Build camera / MNN / OSC server" ON)
-option(SOF_BUILD_CLIENT "Build Dear ImGui desktop client" ON)
+option(SRANIPATCH_BUILD_SERVER "Build camera / MNN / OSC server" ON)
+option(SRANIPATCH_BUILD_CLIENT "Build Dear ImGui desktop client" ON)
 option(
-    SOF_ENABLE_IPO
+    SRANIPATCH_ENABLE_IPO
     "Enable release link-time optimization for application code"
     ON
 )
-option(SOF_SANITIZE "Enable address and undefined behavior sanitizers" OFF)
+option(
+    SRANIPATCH_SANITIZE
+    "Enable address and undefined behavior sanitizers"
+    OFF
+)
 include(CTest)
 include(cmake/Dependencies.cmake)
 find_package(Threads REQUIRED)
 
-add_library(sof_options INTERFACE)
-target_compile_features(sof_options INTERFACE cxx_std_20)
+add_library(sranipatch_options INTERFACE)
+target_compile_features(sranipatch_options INTERFACE cxx_std_20)
 if(MSVC)
     target_compile_options(
-        sof_options
+        sranipatch_options
         INTERFACE /W4 /permissive- /utf-8 /Zc:__cplusplus
     )
     target_compile_definitions(
-        sof_options
+        sranipatch_options
         INTERFACE NOMINMAX WIN32_LEAN_AND_MEAN
     )
 else()
     target_compile_options(
-        sof_options
+        sranipatch_options
         INTERFACE -Wall -Wextra -Wpedantic -Wconversion -Wshadow
     )
-    target_link_options(sof_options INTERFACE -Wl,-z,noexecstack)
-    if(SOF_SANITIZE)
+    target_link_options(sranipatch_options INTERFACE -Wl,-z,noexecstack)
+    if(SRANIPATCH_SANITIZE)
         target_compile_options(
-            sof_options
+            sranipatch_options
             INTERFACE -fsanitize=address,undefined -fno-omit-frame-pointer
         )
-        target_link_options(sof_options INTERFACE -fsanitize=address,undefined)
+        target_link_options(
+            sranipatch_options
+            INTERFACE -fsanitize=address,undefined
+        )
     endif()
 endif()
 
-if(SOF_ENABLE_IPO AND NOT SOF_SANITIZE)
+if(SRANIPATCH_ENABLE_IPO AND NOT SRANIPATCH_SANITIZE)
     include(CheckIPOSupported)
-    check_ipo_supported(RESULT sof_ipo_supported OUTPUT sof_ipo_error)
+    check_ipo_supported(
+        RESULT sranipatch_ipo_supported
+        OUTPUT sranipatch_ipo_error
+    )
 endif()
-function(sof_target target)
-    target_link_libraries(${target} PRIVATE sof_options)
-    if(sof_ipo_supported)
+function(sranipatch_target target)
+    target_link_libraries(${target} PRIVATE sranipatch_options)
+    if(sranipatch_ipo_supported)
         set_property(
             TARGET ${target}
             PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
@@ -71,7 +81,7 @@ function(sof_target target)
 endfunction()
 
 add_library(
-    sof_core
+    sranipatch_core
     STATIC
     src/ipc.cpp
     src/osc.cpp
@@ -79,56 +89,63 @@ add_library(
     src/config.cpp
     src/capture/vive_tracker.cpp
 )
-target_include_directories(sof_core PUBLIC include)
-target_link_libraries(sof_core PUBLIC Threads::Threads)
+target_include_directories(sranipatch_core PUBLIC include)
+target_link_libraries(sranipatch_core PUBLIC Threads::Threads)
 if(WIN32)
-    target_link_libraries(sof_core PRIVATE ws2_32)
+    target_link_libraries(sranipatch_core PRIVATE ws2_32)
 endif()
-sof_target(sof_core)
+sranipatch_target(sranipatch_core)
 
-if(SOF_BUILD_SERVER)
-    sof_add_mnn()
-    sof_add_opencv()
+if(SRANIPATCH_BUILD_SERVER)
+    sranipatch_add_mnn()
+    sranipatch_add_opencv()
     if(WIN32)
         set(capture_source src/capture/media_foundation.cpp)
     else()
         set(capture_source src/capture/v4l2.cpp)
     endif()
-    add_library(sof_capture STATIC ${capture_source})
-    target_link_libraries(sof_capture PUBLIC sof_core)
-    sof_target(sof_capture)
+    add_library(sranipatch_capture STATIC ${capture_source})
+    target_link_libraries(sranipatch_capture PUBLIC sranipatch_core)
+    sranipatch_target(sranipatch_capture)
     add_library(
-        sof_inference
+        sranipatch_inference
         STATIC
         src/inference/mnn.cpp
         src/inference/lip.cpp
         src/inference/image.cpp
     )
     target_include_directories(
-        sof_inference
+        sranipatch_inference
         SYSTEM
         PRIVATE "${mnn_SOURCE_DIR}/include"
     )
     target_include_directories(
-        sof_inference
+        sranipatch_inference
         SYSTEM
-        PRIVATE ${sof_opencv_includes}
+        PRIVATE ${sranipatch_opencv_includes}
     )
-    target_link_libraries(sof_inference PUBLIC sof_core PRIVATE MNN opencv_core)
-    sof_target(sof_inference)
-    add_executable(sof-server src/server/main.cpp)
-    target_link_libraries(sof-server PRIVATE sof_capture sof_inference MNN)
+    target_link_libraries(
+        sranipatch_inference
+        PUBLIC sranipatch_core
+        PRIVATE MNN opencv_core
+    )
+    sranipatch_target(sranipatch_inference)
+    add_executable(sranipatch-server src/server/main.cpp)
+    target_link_libraries(
+        sranipatch-server
+        PRIVATE sranipatch_capture sranipatch_inference MNN
+    )
     if(WIN32)
         target_link_libraries(
-            sof_capture
+            sranipatch_capture
             PRIVATE mfplat mfreadwrite mfuuid mf ole32 strmiids ksuser cfgmgr32
         )
     endif()
-    sof_target(sof-server)
-    install(TARGETS sof-server RUNTIME DESTINATION bin COMPONENT Runtime)
+    sranipatch_target(sranipatch-server)
+    install(TARGETS sranipatch-server RUNTIME DESTINATION bin COMPONENT Runtime)
     install(
         FILES ../assets/models/lip_model.mnn
-        DESTINATION share/sranipal-on-frame/models
+        DESTINATION share/sranipatch/models
         COMPONENT Runtime
     )
     install(
@@ -138,73 +155,90 @@ if(SOF_BUILD_SERVER)
     )
 endif()
 
-if(SOF_BUILD_CLIENT)
-    sof_add_gui()
-    add_library(sof_head_model STATIC src/client/head_model.cpp)
-    target_include_directories(sof_head_model PUBLIC src/client)
-    target_link_libraries(sof_head_model PUBLIC sof_core PRIVATE sof_cgltf)
-    sof_target(sof_head_model)
-    add_executable(sof-client src/client/main.cpp src/client/head_preview.cpp)
-    target_link_libraries(sof-client PRIVATE sof_core sof_imgui sof_head_model)
-    sof_target(sof-client)
+if(SRANIPATCH_BUILD_CLIENT)
+    sranipatch_add_gui()
+    add_library(sranipatch_head_model STATIC src/client/head_model.cpp)
+    target_include_directories(sranipatch_head_model PUBLIC src/client)
+    target_link_libraries(
+        sranipatch_head_model
+        PUBLIC sranipatch_core
+        PRIVATE sranipatch_cgltf
+    )
+    sranipatch_target(sranipatch_head_model)
+    add_executable(
+        sranipatch-client
+        src/client/main.cpp
+        src/client/head_preview.cpp
+    )
+    target_link_libraries(
+        sranipatch-client
+        PRIVATE sranipatch_core sranipatch_imgui sranipatch_head_model
+    )
+    sranipatch_target(sranipatch-client)
     add_custom_command(
-        TARGET sof-client
+        TARGET sranipatch-client
         POST_BUILD
         COMMAND
             ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/head.glb"
-            "$<TARGET_FILE_DIR:sof-client>/head.glb"
+            "$<TARGET_FILE_DIR:sranipatch-client>/head.glb"
     )
-    install(TARGETS sof-client RUNTIME DESTINATION bin COMPONENT Runtime)
+    install(TARGETS sranipatch-client RUNTIME DESTINATION bin COMPONENT Runtime)
     install(FILES head.glb DESTINATION bin COMPONENT Runtime)
 endif()
 
 if(BUILD_TESTING)
-    if(SOF_BUILD_CLIENT)
-        add_executable(sof-head-tests tests/head_tests.cpp)
-        target_link_libraries(sof-head-tests PRIVATE sof_head_model)
-        sof_target(sof-head-tests)
+    if(SRANIPATCH_BUILD_CLIENT)
+        add_executable(sranipatch-head-tests tests/head_tests.cpp)
+        target_link_libraries(
+            sranipatch-head-tests
+            PRIVATE sranipatch_head_model
+        )
+        sranipatch_target(sranipatch-head-tests)
         add_test(
             NAME head-model
-            COMMAND sof-head-tests "${CMAKE_CURRENT_SOURCE_DIR}/head.glb"
+            COMMAND sranipatch-head-tests "${CMAKE_CURRENT_SOURCE_DIR}/head.glb"
         )
         set_tests_properties(head-model PROPERTIES TIMEOUT 20)
         # Requires a graphics session; run explicitly rather than on headless CI.
         add_executable(
-            sof-head-render-tests
+            sranipatch-head-render-tests
             tests/head_render_tests.cpp
             src/client/head_preview.cpp
         )
         target_link_libraries(
-            sof-head-render-tests
-            PRIVATE sof_head_model sof_imgui
+            sranipatch-head-render-tests
+            PRIVATE sranipatch_head_model sranipatch_imgui
         )
-        sof_target(sof-head-render-tests)
+        sranipatch_target(sranipatch-head-render-tests)
     endif()
-    add_executable(sof-tests tests/core_tests.cpp)
-    target_link_libraries(sof-tests PRIVATE sof_core)
-    sof_target(sof-tests)
-    add_test(NAME core COMMAND sof-tests)
-    if(SOF_BUILD_SERVER)
-        add_executable(sof-inference-tests tests/inference_tests.cpp)
-        target_link_libraries(sof-inference-tests PRIVATE sof_inference MNN)
-        sof_target(sof-inference-tests)
+    add_executable(sranipatch-tests tests/core_tests.cpp)
+    target_link_libraries(sranipatch-tests PRIVATE sranipatch_core)
+    sranipatch_target(sranipatch-tests)
+    add_test(NAME core COMMAND sranipatch-tests)
+    if(SRANIPATCH_BUILD_SERVER)
+        add_executable(sranipatch-inference-tests tests/inference_tests.cpp)
+        target_link_libraries(
+            sranipatch-inference-tests
+            PRIVATE sranipatch_inference MNN
+        )
+        sranipatch_target(sranipatch-inference-tests)
         add_test(
             NAME lip-inference
             COMMAND
-                sof-inference-tests
+                sranipatch-inference-tests
                 "${CMAKE_CURRENT_SOURCE_DIR}/../assets/models/lip_model.mnn"
         )
         set_tests_properties(lip-inference PROPERTIES TIMEOUT 20)
     endif()
 endif()
 
-set(CPACK_PACKAGE_NAME "sranipal-on-frame")
+set(CPACK_PACKAGE_NAME "sranipatch")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_GENERATOR "ZIP;TGZ")
 set(CPACK_COMPONENTS_ALL Runtime)
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
-if(MSVC AND (SOF_BUILD_SERVER OR SOF_BUILD_CLIENT))
+if(MSVC AND (SRANIPATCH_BUILD_SERVER OR SRANIPATCH_BUILD_CLIENT))
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION bin)
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT Runtime)
     include(InstallRequiredSystemLibraries)

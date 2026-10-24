@@ -1,5 +1,5 @@
 #include "head_model.hpp"
-#include "sof/lip.hpp"
+#include "sranipatch/lip.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -14,15 +14,17 @@ namespace
   }
 }  // namespace
 
+// Exceptions from the body are caught below; clang-tidy misidentifies MSVC exception inheritance.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv)
 {
   try
   {
     require(argc == 2, "Expected head model path");
-    sof::HeadModel model(argv[1]);
+    sranipatch::HeadModel model(argv[1]);
     require(!model.vertices().empty() && !model.indices().empty(), "Head geometry is missing");
-    const std::vector<sof::HeadVertex> neutral(model.vertices().begin(), model.vertices().end());
-    std::array<sof::Parameter, sof::lip_parameter_count> parameters {};
+    const std::vector<sranipatch::HeadVertex> neutral(model.vertices().begin(), model.vertices().end());
+    std::array<sranipatch::Parameter, sranipatch::lip_parameter_count> parameters {};
     for (std::size_t shape = 0; shape < parameters.size(); ++shape)
     {
       parameters.fill({});
@@ -43,12 +45,12 @@ int main(int argc, char** argv)
         require(std::abs(length - 1) < 1e-4F, "Morphed normal is not normalized");
       }
       if (!moved)
-        throw std::runtime_error("Blendshape did not deform geometry: " + std::string(sof::lip_parameter_names[shape]));
+        throw std::runtime_error("Blendshape did not deform geometry: " + std::string(sranipatch::lip_parameter_names[shape]));
     }
     parameters.fill({});
     parameters[3].value = 0.5F;
     model.deform(parameters);
-    const std::vector<sof::HeadVertex> half(model.vertices().begin(), model.vertices().end());
+    const std::vector<sranipatch::HeadVertex> half(model.vertices().begin(), model.vertices().end());
     parameters[3].value = 1;
     model.deform(parameters);
     for (std::size_t i = 0; i < neutral.size(); ++i)

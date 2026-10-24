@@ -5,8 +5,8 @@
 set -u
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-server="$root/build/linux-release/sof-server"
-client="$root/build/linux-release/sof-client"
+server="$root/build/linux-release/sranipatch-server"
+client="$root/build/linux-release/sranipatch-client"
 server_pid=
 client_pid=
 
@@ -30,7 +30,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [ ! -x "$server" ] || [ ! -x "$client" ]; then
-    echo "Build sof-server and sof-client in build/linux-release first" >&2
+    echo "Build sranipatch-server and sranipatch-client in build/linux-release first" >&2
     exit 1
 fi
 if ! command -v taskset >/dev/null 2>&1; then

@@ -1,12 +1,12 @@
 #pragma once
-#include "sof/frame.hpp"
+#include "sranipatch/frame.hpp"
 
 #include <memory>
 #include <stdexcept>
 #include <stop_token>
 #include <string>
 
-namespace sof
+namespace sranipatch
 {
   class CaptureUnavailable : public std::runtime_error
   {
@@ -36,4 +36,4 @@ namespace sof
   // Sleeps until the fixed VIVE capture device is present (or newly arrives), or stop is requested.
   // Implementations use native device notifications rather than periodic scans.
   void wait_for_capture_device(std::stop_token stop, bool new_arrival_required);
-}  // namespace sof
+}  // namespace sranipatch

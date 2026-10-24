@@ -1,12 +1,12 @@
 #pragma once
-#include "sof/frame.hpp"
-#include "sof/protocol.hpp"
+#include "sranipatch/frame.hpp"
+#include "sranipatch/protocol.hpp"
 
 #include <cstdint>
 #include <memory>
 #include <span>
 
-namespace sof
+namespace sranipatch
 {
   enum class InferencePrecision : std::uint8_t
   {
@@ -24,4 +24,4 @@ namespace sof
 
   std::unique_ptr<Inference> open_lip_mnn(const Config& config,
     InferencePrecision precision = InferencePrecision::normal);
-}  // namespace sof
+}  // namespace sranipatch

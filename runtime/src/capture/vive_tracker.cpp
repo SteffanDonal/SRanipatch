@@ -1,6 +1,6 @@
 // Protocol adapted from LordOfDragons/vivefacialtracker (MIT).
 // See third_party/vivefacialtracker-LICENSE.txt.
-#include "sof/vive_tracker.hpp"
+#include "sranipatch/vive_tracker.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,7 +9,7 @@
 #include <thread>
 #include <vector>
 
-namespace sof
+namespace sranipatch
 {
   namespace
   {
@@ -114,4 +114,4 @@ namespace sof
     commands.probe();
     commands.stream(false);
   }
-}  // namespace sof
+}  // namespace sranipatch

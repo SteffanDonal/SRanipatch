@@ -1,8 +1,8 @@
-#include "sof/config.hpp"
-#include "sof/frame.hpp"
-#include "sof/ipc.hpp"
-#include "sof/osc.hpp"
-#include "sof/vive_tracker.hpp"
+#include "sranipatch/config.hpp"
+#include "sranipatch/frame.hpp"
+#include "sranipatch/ipc.hpp"
+#include "sranipatch/osc.hpp"
+#include "sranipatch/vive_tracker.hpp"
 
 #include <algorithm>
 #include <array>
@@ -46,7 +46,7 @@ namespace
 
   std::string test_name()
   {
-    return "test-" + std::to_string(sof::monotonic_ns());
+    return "test-" + std::to_string(sranipatch::monotonic_ns());
   }
 
   struct TestChannel
@@ -56,7 +56,7 @@ namespace
     ~TestChannel()
     {
 #ifndef _WIN32
-      const auto base = "/sof-" + std::to_string(getuid()) + "-" + name;
+      const auto base = "/sranipatch-" + std::to_string(getuid()) + "-" + name;
       shm_unlink(base.c_str());
       shm_unlink((base + "-owner").c_str());
 #endif
@@ -68,10 +68,10 @@ namespace
     const std::array<float, 2> values { 1.0F, -0.5F };
     const std::vector<std::uint8_t> expected { '/', 'x', 0, 0, ',', 'f', 'f', 0,
       0x3f, 0x80, 0, 0, 0xbf, 0, 0, 0 };
-    require(sof::encode_osc("/x", values) == expected, "OSC wire bytes / float endianness are wrong");
-    require(sof::encode_osc("/long", {}).size() == 12, "OSC string padding is wrong");
-    must_throw([] { sof::encode_osc("invalid", {}); });
-    must_throw([] { sof::encode_osc(std::string_view("/x\0bad", 6), {}); });
+    require(sranipatch::encode_osc("/x", values) == expected, "OSC wire bytes / float endianness are wrong");
+    require(sranipatch::encode_osc("/long", {}).size() == 12, "OSC string padding is wrong");
+    must_throw([] { sranipatch::encode_osc("invalid", {}); });
+    must_throw([] { sranipatch::encode_osc(std::string_view("/x\0bad", 6), {}); });
   }
 
   void udp_delivery()
@@ -99,12 +99,12 @@ namespace
     SocketLength length = sizeof(address);
     require(getsockname(socket, reinterpret_cast<sockaddr*>(&address), &length) == 0, "getsockname failed");
     {
-      sof::OscSender sender("127.0.0.1", ntohs(address.sin_port), "/test");
+      sranipatch::OscSender sender("127.0.0.1", ntohs(address.sin_port), "/test");
       const std::array<float, 1> values { 0.25F };
       require(sender.send(values), "OSC UDP send failed");
       std::array<char, 256> buffer {};
       const auto received = recv(socket, buffer.data(), static_cast<int>(buffer.size()), 0);
-      const auto expected = sof::encode_osc("/test", values);
+      const auto expected = sranipatch::encode_osc("/test", values);
       require(received >= 0 && static_cast<std::size_t>(received) == expected.size(),
         "UDP packet length differs");
       for (std::size_t i = 0; i < expected.size(); ++i)
@@ -120,26 +120,26 @@ namespace
 
   void frames()
   {
-    sof::Frame frame;
+    sranipatch::Frame frame;
     frame.width = 2;
     frame.height = 2;
     // Row padding must be skipped and VIVE chroma bytes ignored.
     const std::array<std::uint8_t, 12> source { 16, 128, 235, 128, 99, 99, 235, 128, 16, 128, 99, 99 };
-    sof::copy_yuyv_luma(source.data(), 6, frame);
+    sranipatch::copy_yuyv_luma(source.data(), 6, frame);
     require(frame.luma == std::vector<std::uint8_t> { 16, 235, 235, 16 },
       "VIVE luminance decoding must ignore chroma and preserve raw luminance");
     frame.yuyv.resize(8);
-    sof::copy_yuyv_luma(source.data(), 6, frame);
+    sranipatch::copy_yuyv_luma(source.data(), 6, frame);
     require(frame.yuyv == std::vector<std::uint8_t>({ 16, 128, 235, 128, 235, 128, 16, 128 }),
       "VIVE packed YUYV bytes were not preserved");
-    sof::copy_yuyv_luma(source.data() + 6, -6, frame);
+    sranipatch::copy_yuyv_luma(source.data() + 6, -6, frame);
     require(frame.luma[0] == 235 && frame.luma[2] == 16, "Negative luminance row stride is wrong");
-    sof::LatestFrame latest;
+    sranipatch::LatestFrame latest;
     frame.sequence = 1;
     latest.push(frame);
     frame.sequence = 2;
     latest.push(frame);
-    sof::Frame consumer;
+    sranipatch::Frame consumer;
     std::stop_source stop;
     require(latest.pop(consumer, stop.get_token()) && consumer.sequence == 2,
       "Latest frame was not retained");
@@ -149,7 +149,7 @@ namespace
 
   void configuration()
   {
-    const auto path = std::filesystem::temp_directory_path() / ("sof-config-" + std::to_string(sof::monotonic_ns()) + ".ini");
+    const auto path = std::filesystem::temp_directory_path() / ("sranipatch-config-" + std::to_string(sranipatch::monotonic_ns()) + ".ini");
 
     struct Cleanup
     {
@@ -166,54 +166,54 @@ namespace
       std::ofstream output(path);
       output << "# OSC destination\nosc_host = 192.0.2.4\nosc_port=12345\n" "osc_address = /face/lips\n";
     }
-    sof::Config config;
-    require(sof::load_osc_config(path, config), "Configuration file was not loaded");
+    sranipatch::Config config;
+    require(sranipatch::load_osc_config(path, config), "Configuration file was not loaded");
     require(std::string_view(config.osc_host.data()) == "192.0.2.4" && config.osc_port == 12345 && std::string_view(config.osc_address.data()) == "/face/lips",
       "OSC configuration values differ");
     {
       std::ofstream output(path);
       output << "unknown=value\n";
     }
-    must_throw([&] { sof::load_osc_config(path, config); });
+    must_throw([&] { sranipatch::load_osc_config(path, config); });
   }
 
   void ipc_roundtrip()
   {
     const TestChannel channel;
     const auto& name = channel.name;
-    auto server = std::make_unique<sof::SharedMemory>(name, sof::SharedMemory::Role::server);
-    must_throw([&] { sof::SharedMemory duplicate(name, sof::SharedMemory::Role::server); });
-    sof::SharedMemory client(name, sof::SharedMemory::Role::client);
-    sof::Status status;
+    auto server = std::make_unique<sranipatch::SharedMemory>(name, sranipatch::SharedMemory::Role::server);
+    must_throw([&] { sranipatch::SharedMemory duplicate(name, sranipatch::SharedMemory::Role::server); });
+    sranipatch::SharedMemory client(name, sranipatch::SharedMemory::Role::client);
+    sranipatch::Status status;
     status.frames_inferred = 123;
     status.parameter_count = 1;
     status.parameters[0].value = 0.5F;
     require(server->publish(status), "Server snapshot publish failed");
-    sof::Status received;
+    sranipatch::Status received;
     require(client.read(received) && received.frames_inferred == 123 && received.parameters[0].value == 0.5F,
       "IPC snapshot differs");
-    sof::Frame image;
-    image.width = sof::capture_width;
-    image.height = sof::capture_height;
+    sranipatch::Frame image;
+    image.width = sranipatch::capture_width;
+    image.height = sranipatch::capture_height;
     image.sequence = 10;
     image.luma.assign(static_cast<std::size_t>(image.width) * image.height, 123);
     require(server->publish_frame(image), "Preview publication failed");
-    sof::Frame received_frame;
+    sranipatch::Frame received_frame;
     require(client.read_frame(received_frame) && received_frame.luma == image.luma && received_frame.sequence == 10,
       "Mapped preview pixels differ");
     require(!client.read_frame(received_frame), "Unchanged preview must not be copied again");
     server.reset();
-    server = std::make_unique<sof::SharedMemory>(name, sof::SharedMemory::Role::server);
+    server = std::make_unique<sranipatch::SharedMemory>(name, sranipatch::SharedMemory::Role::server);
     require(client.read(received) && received.frames_inferred == 0,
       "A connected client did not see the restarted server's reset state");
     require(!client.read_frame(received_frame), "Restarted server exposed a stale preview");
-    must_throw([] { sof::SharedMemory invalid("../bad", sof::SharedMemory::Role::server); });
-    must_throw([] { sof::SharedMemory missing(test_name(), sof::SharedMemory::Role::client); });
+    must_throw([] { sranipatch::SharedMemory invalid("../bad", sranipatch::SharedMemory::Role::server); });
+    must_throw([] { sranipatch::SharedMemory missing(test_name(), sranipatch::SharedMemory::Role::client); });
   }
 
   void tracker_commands()
   {
-    struct FakeExtension final : sof::TrackerExtension
+    struct FakeExtension final : sranipatch::TrackerExtension
     {
       std::size_t size { 64 };
       std::vector<std::vector<std::uint8_t>> commands;
@@ -251,7 +251,7 @@ namespace
     {
       FakeExtension extension;
       extension.size = size;
-      sof::enable_vive_tracker(extension);
+      sranipatch::enable_vive_tracker(extension);
       require(extension.commands.size() == 16, "VIVE initialization did not send all sensor commands");
       require(extension.commands[1][1] == 0x14 && extension.commands[1][3] == 0 && extension.commands.back()[1] == 0x14 && extension.commands.back()[3] == 1,
         "VIVE stream enable was not ordered after initialization");
@@ -262,12 +262,12 @@ namespace
       if (size == 384)
         require(extension.commands.front()[254] == 0x53 && extension.commands.front()[255] == 0x54,
           "384-byte VIVE handshake footer is missing");
-      sof::disable_vive_tracker(extension);
+      sranipatch::disable_vive_tracker(extension);
       require(extension.commands.back()[3] == 0, "VIVE stream was not disabled");
     }
     FakeExtension invalid;
     invalid.wrong_echo = true;
-    must_throw([&] { sof::enable_vive_tracker(invalid); });
+    must_throw([&] { sranipatch::enable_vive_tracker(invalid); });
   }
 }  // namespace
 

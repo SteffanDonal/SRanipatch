@@ -1,5 +1,5 @@
 #include "head_preview.hpp"
-#include "sof/lip.hpp"
+#include "sranipatch/lip.hpp"
 
 #include <GLFW/glfw3.h>
 
@@ -25,6 +25,8 @@ namespace
   }
 }  // namespace
 
+// Exceptions from the body are caught below; clang-tidy misidentifies MSVC exception inheritance.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv)
 {
   GLFWwindow* window {};
@@ -41,9 +43,9 @@ int main(int argc, char** argv)
       throw std::runtime_error("Cannot create hidden OpenGL context");
     glfwMakeContextCurrent(window);
     {
-      sof::HeadPreview preview(argv[1]);
+      sranipatch::HeadPreview preview(argv[1]);
       const int size = argc == 5 ? 512 : 256;
-      const auto read = [&](std::span<const sof::Parameter> parameters) {
+      const auto read = [&](std::span<const sranipatch::Parameter> parameters) {
         const auto texture = preview.render(parameters, size, size);
         glBindTexture(GL_TEXTURE_2D, texture);
         std::vector<unsigned char> pixels(static_cast<std::size_t>(size * size * 4));
@@ -61,7 +63,7 @@ int main(int argc, char** argv)
       }
       if (gray_pixels < 1000)
         throw std::runtime_error("Head preview did not produce visible grayscale geometry");
-      std::array<sof::Parameter, sof::lip_parameter_count> parameters {};
+      std::array<sranipatch::Parameter, sranipatch::lip_parameter_count> parameters {};
       parameters[3].value = 1;
       if (read(parameters) == neutral)
         throw std::runtime_error("Jaw blendshape did not change rendered output");

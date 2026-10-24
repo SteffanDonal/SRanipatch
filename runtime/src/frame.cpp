@@ -1,11 +1,11 @@
-#include "sof/frame.hpp"
+#include "sranipatch/frame.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
 #include <utility>
 
-namespace sof
+namespace sranipatch
 {
   void LatestFrame::push(Frame& frame)
   {
@@ -43,4 +43,4 @@ namespace sof
         dest[x] = row[static_cast<std::size_t>(x) * 2];
     }
   }
-}  // namespace sof
+}  // namespace sranipatch

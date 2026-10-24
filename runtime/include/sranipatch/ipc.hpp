@@ -1,12 +1,12 @@
 #pragma once
-#include "sof/frame.hpp"
-#include "sof/protocol.hpp"
+#include "sranipatch/frame.hpp"
+#include "sranipatch/protocol.hpp"
 
 #include <cstdint>
 #include <memory>
 #include <string>
 
-namespace sof
+namespace sranipatch
 {
   // One server per name. All access uses a crash-recoverable OS process lock;
   // snapshots contain no pointers, C++ atomics, or process-local synchronization objects.
@@ -33,4 +33,4 @@ namespace sof
     struct Impl;
     std::unique_ptr<Impl> impl_;
   };
-}  // namespace sof
+}  // namespace sranipatch

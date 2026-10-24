@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace sof
+namespace sranipatch
 {
   namespace
   {
@@ -25,44 +25,44 @@ namespace sof
 
     struct Gl
     {
-#define SOF_GL(result, name, ...) \
+#define SRANIPATCH_GL(result, name, ...) \
   using name##Proc = result(APIENTRY*)(__VA_ARGS__); \
   name##Proc name = load<name##Proc>("gl" #name)
-      SOF_GL(GLuint, CreateShader, GLenum);
-      SOF_GL(void, ShaderSource, GLuint, GLsizei, const char* const*, const GLint*);
-      SOF_GL(void, CompileShader, GLuint);
-      SOF_GL(void, GetShaderiv, GLuint, GLenum, GLint*);
-      SOF_GL(void, GetShaderInfoLog, GLuint, GLsizei, GLsizei*, char*);
-      SOF_GL(void, DeleteShader, GLuint);
-      SOF_GL(GLuint, CreateProgram, void);
-      SOF_GL(void, AttachShader, GLuint, GLuint);
-      SOF_GL(void, LinkProgram, GLuint);
-      SOF_GL(void, GetProgramiv, GLuint, GLenum, GLint*);
-      SOF_GL(void, GetProgramInfoLog, GLuint, GLsizei, GLsizei*, char*);
-      SOF_GL(void, DeleteProgram, GLuint);
-      SOF_GL(void, UseProgram, GLuint);
-      SOF_GL(GLint, GetUniformLocation, GLuint, const char*);
-      SOF_GL(void, UniformMatrix4fv, GLint, GLsizei, GLboolean, const GLfloat*);
-      SOF_GL(void, GenVertexArrays, GLsizei, GLuint*);
-      SOF_GL(void, BindVertexArray, GLuint);
-      SOF_GL(void, DeleteVertexArrays, GLsizei, const GLuint*);
-      SOF_GL(void, GenBuffers, GLsizei, GLuint*);
-      SOF_GL(void, BindBuffer, GLenum, GLuint);
-      SOF_GL(void, BufferData, GLenum, std::ptrdiff_t, const void*, GLenum);
-      SOF_GL(void, DeleteBuffers, GLsizei, const GLuint*);
-      SOF_GL(void, EnableVertexAttribArray, GLuint);
-      SOF_GL(void, VertexAttribPointer, GLuint, GLint, GLenum, GLboolean, GLsizei, const void*);
-      SOF_GL(void, GenFramebuffers, GLsizei, GLuint*);
-      SOF_GL(void, BindFramebuffer, GLenum, GLuint);
-      SOF_GL(void, DeleteFramebuffers, GLsizei, const GLuint*);
-      SOF_GL(void, FramebufferTexture2D, GLenum, GLenum, GLenum, GLuint, GLint);
-      SOF_GL(GLenum, CheckFramebufferStatus, GLenum);
-      SOF_GL(void, GenRenderbuffers, GLsizei, GLuint*);
-      SOF_GL(void, BindRenderbuffer, GLenum, GLuint);
-      SOF_GL(void, RenderbufferStorage, GLenum, GLenum, GLsizei, GLsizei);
-      SOF_GL(void, FramebufferRenderbuffer, GLenum, GLenum, GLenum, GLuint);
-      SOF_GL(void, DeleteRenderbuffers, GLsizei, const GLuint*);
-#undef SOF_GL
+      SRANIPATCH_GL(GLuint, CreateShader, GLenum);
+      SRANIPATCH_GL(void, ShaderSource, GLuint, GLsizei, const char* const*, const GLint*);
+      SRANIPATCH_GL(void, CompileShader, GLuint);
+      SRANIPATCH_GL(void, GetShaderiv, GLuint, GLenum, GLint*);
+      SRANIPATCH_GL(void, GetShaderInfoLog, GLuint, GLsizei, GLsizei*, char*);
+      SRANIPATCH_GL(void, DeleteShader, GLuint);
+      SRANIPATCH_GL(GLuint, CreateProgram, void);
+      SRANIPATCH_GL(void, AttachShader, GLuint, GLuint);
+      SRANIPATCH_GL(void, LinkProgram, GLuint);
+      SRANIPATCH_GL(void, GetProgramiv, GLuint, GLenum, GLint*);
+      SRANIPATCH_GL(void, GetProgramInfoLog, GLuint, GLsizei, GLsizei*, char*);
+      SRANIPATCH_GL(void, DeleteProgram, GLuint);
+      SRANIPATCH_GL(void, UseProgram, GLuint);
+      SRANIPATCH_GL(GLint, GetUniformLocation, GLuint, const char*);
+      SRANIPATCH_GL(void, UniformMatrix4fv, GLint, GLsizei, GLboolean, const GLfloat*);
+      SRANIPATCH_GL(void, GenVertexArrays, GLsizei, GLuint*);
+      SRANIPATCH_GL(void, BindVertexArray, GLuint);
+      SRANIPATCH_GL(void, DeleteVertexArrays, GLsizei, const GLuint*);
+      SRANIPATCH_GL(void, GenBuffers, GLsizei, GLuint*);
+      SRANIPATCH_GL(void, BindBuffer, GLenum, GLuint);
+      SRANIPATCH_GL(void, BufferData, GLenum, std::ptrdiff_t, const void*, GLenum);
+      SRANIPATCH_GL(void, DeleteBuffers, GLsizei, const GLuint*);
+      SRANIPATCH_GL(void, EnableVertexAttribArray, GLuint);
+      SRANIPATCH_GL(void, VertexAttribPointer, GLuint, GLint, GLenum, GLboolean, GLsizei, const void*);
+      SRANIPATCH_GL(void, GenFramebuffers, GLsizei, GLuint*);
+      SRANIPATCH_GL(void, BindFramebuffer, GLenum, GLuint);
+      SRANIPATCH_GL(void, DeleteFramebuffers, GLsizei, const GLuint*);
+      SRANIPATCH_GL(void, FramebufferTexture2D, GLenum, GLenum, GLenum, GLuint, GLint);
+      SRANIPATCH_GL(GLenum, CheckFramebufferStatus, GLenum);
+      SRANIPATCH_GL(void, GenRenderbuffers, GLsizei, GLuint*);
+      SRANIPATCH_GL(void, BindRenderbuffer, GLenum, GLuint);
+      SRANIPATCH_GL(void, RenderbufferStorage, GLenum, GLenum, GLsizei, GLsizei);
+      SRANIPATCH_GL(void, FramebufferRenderbuffer, GLenum, GLenum, GLenum, GLuint);
+      SRANIPATCH_GL(void, DeleteRenderbuffers, GLsizei, const GLuint*);
+#undef SRANIPATCH_GL
 
       template <typename Function>
       static Function load(const char* name)
@@ -221,9 +221,11 @@ void main() {
       gl.EnableVertexAttribArray(0);
       gl.EnableVertexAttribArray(1);
       gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(HeadVertex), nullptr);
-      gl.VertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(HeadVertex),
+      gl.VertexAttribPointer(
+        1, 3, GL_FLOAT, GL_FALSE, sizeof(HeadVertex),
         // NOLINTNEXTLINE(performance-no-int-to-ptr): OpenGL encodes byte offsets as pointers.
-        reinterpret_cast<const void*>(offsetof(HeadVertex, normal)));
+        reinterpret_cast<const void*>(offsetof(HeadVertex, normal))
+      );
       gl.GenBuffers(1, &indices);
       gl.BindBuffer(element_buffer, indices);
       gl.BufferData(element_buffer, static_cast<std::ptrdiff_t>(model.indices().size_bytes()),
@@ -294,4 +296,4 @@ void main() {
   {
     return impl_->render(parameters, width, height);
   }
-}  // namespace sof
+}  // namespace sranipatch

@@ -1,4 +1,4 @@
-#include "sof/config.hpp"
+#include "sranipatch/config.hpp"
 
 #include <charconv>
 #include <cstdlib>
@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-namespace sof
+namespace sranipatch
 {
   namespace
   {
@@ -39,16 +39,16 @@ namespace sof
       std::free(root);
       return {};
     }
-    const auto path = std::filesystem::path(root) / "sranipal-on-frame" / "config.ini";
+    const auto path = std::filesystem::path(root) / "sranipatch" / "config.ini";
     std::free(root);
     return path;
 #else
     if (const char* root = std::getenv("XDG_CONFIG_HOME"); root && *root)
-      return std::filesystem::path(root) / "sranipal-on-frame" / "config.ini";
+      return std::filesystem::path(root) / "sranipatch" / "config.ini";
     const char* home = std::getenv("HOME");
     if (!home || !*home)
       return {};
-    return std::filesystem::path(home) / ".config" / "sranipal-on-frame" / "config.ini";
+    return std::filesystem::path(home) / ".config" / "sranipatch" / "config.ini";
 #endif
   }
 
@@ -101,4 +101,4 @@ namespace sof
     config = parsed;
     return true;
   }
-}  // namespace sof
+}  // namespace sranipatch

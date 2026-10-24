@@ -1,8 +1,8 @@
-#include "sof/capture.hpp"
-#include "sof/config.hpp"
-#include "sof/inference.hpp"
-#include "sof/ipc.hpp"
-#include "sof/osc.hpp"
+#include "sranipatch/capture.hpp"
+#include "sranipatch/config.hpp"
+#include "sranipatch/inference.hpp"
+#include "sranipatch/ipc.hpp"
+#include "sranipatch/osc.hpp"
 
 #include <atomic>
 #include <charconv>
@@ -14,11 +14,11 @@
 
 namespace
 {
-  constexpr auto default_precision = sof::InferencePrecision::normal;
+  constexpr auto default_precision = sranipatch::InferencePrecision::normal;
 
-  constexpr std::string_view precision_name(sof::InferencePrecision precision)
+  constexpr std::string_view precision_name(sranipatch::InferencePrecision precision)
   {
-    return precision == sof::InferencePrecision::low ? "low" : "normal";
+    return precision == sranipatch::InferencePrecision::low ? "low" : "normal";
   }
 
   volatile std::sig_atomic_t interrupted = 0;
@@ -30,9 +30,9 @@ namespace
 
   struct Options
   {
-    sof::Config config;
-    sof::InferencePrecision precision { default_precision };
-    std::string ipc { "sranipal" };
+    sranipatch::Config config;
+    sranipatch::InferencePrecision precision { default_precision };
+    std::string ipc { "sranipatch" };
     bool help {};
   };
 
@@ -41,7 +41,7 @@ namespace
   {
     if (value.empty() || value.size() >= N)
       throw std::runtime_error("Argument string is empty or too long");
-    sof::set_text(dest, value);
+    sranipatch::set_text(dest, value);
   }
 
   std::uint32_t number(std::string_view value, std::uint32_t minimum, std::uint32_t maximum)
@@ -56,11 +56,11 @@ namespace
   Options parse(int argc, char** argv)
   {
     Options options;
-    sof::set_text(options.config.model, "../assets/models/lip_model.mnn");
-    sof::set_text(options.config.osc_host, "127.0.0.1");
-    sof::set_text(options.config.osc_address, "/sranipal/parameters");
-    const auto config_path = sof::default_config_path();
-    if (sof::load_osc_config(config_path, options.config))
+    sranipatch::set_text(options.config.model, "../assets/models/lip_model.mnn");
+    sranipatch::set_text(options.config.osc_host, "127.0.0.1");
+    sranipatch::set_text(options.config.osc_address, "/sranipatch/parameters");
+    const auto config_path = sranipatch::default_config_path();
+    if (sranipatch::load_osc_config(config_path, options.config))
       std::cout << "Loaded configuration from " << config_path << '\n';
     for (int i = 1; i < argc; ++i)
     {
@@ -82,9 +82,9 @@ namespace
       else if (key == "--precision")
       {
         if (value == "normal")
-          options.precision = sof::InferencePrecision::normal;
+          options.precision = sranipatch::InferencePrecision::normal;
         else if (value == "low")
-          options.precision = sof::InferencePrecision::low;
+          options.precision = sranipatch::InferencePrecision::low;
         else
           throw std::runtime_error("Precision must be normal or low");
       }
@@ -102,27 +102,27 @@ namespace
 
   void usage()
   {
-    std::cout << "sof-server [options]\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
+    std::cout << "sranipatch-server [options]\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
               << precision_name(default_precision)
-              << ")\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipal)\n";
+              << ")\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipatch)\n";
   }
 
   int serve(const Options& options)
   {
-    sof::SharedMemory ipc(options.ipc, sof::SharedMemory::Role::server);
-    sof::Status status;
+    sranipatch::SharedMemory ipc(options.ipc, sranipatch::SharedMemory::Role::server);
+    sranipatch::Status status;
     status.config = options.config;
-    status.session_id = sof::monotonic_ns();
+    status.session_id = sranipatch::monotonic_ns();
     status.heartbeat_ns = status.session_id;
     ipc.publish(status);
     try
     {
-      auto inference = sof::open_lip_mnn(options.config, options.precision);
+      auto inference = sranipatch::open_lip_mnn(options.config, options.precision);
       std::cout << "MNN CPU precision: " << precision_name(options.precision) << '\n';
-      sof::OscSender osc(options.config.osc_host.data(),
+      sranipatch::OscSender osc(options.config.osc_host.data(),
         static_cast<std::uint16_t>(options.config.osc_port),
         options.config.osc_address.data());
-      sof::LatestFrame latest;
+      sranipatch::LatestFrame latest;
       std::atomic<std::uint64_t> captured {};
       std::atomic<bool> capture_connected {};
       std::atomic<bool> capture_fault {};
@@ -135,30 +135,30 @@ namespace
           {
             try
             {
-              auto camera = sof::open_capture();
+              auto camera = sranipatch::open_capture();
               capture_connected.store(true, std::memory_order_release);
               std::cout << "Camera connected\n";
-              sof::Frame frame;
-              auto last_frame_time = sof::monotonic_ns();
+              sranipatch::Frame frame;
+              auto last_frame_time = sranipatch::monotonic_ns();
               while (!stop.stop_requested())
               {
                 if (camera->read(frame, stop))
                 {
-                  last_frame_time = sof::monotonic_ns();
+                  last_frame_time = sranipatch::monotonic_ns();
                   captured.fetch_add(1, std::memory_order_relaxed);
                   latest.push(frame);
                 }
-                if (sof::monotonic_ns() - last_frame_time > 5'000'000'000ULL)
-                  throw sof::CaptureUnavailable(
+                if (sranipatch::monotonic_ns() - last_frame_time > 5'000'000'000ULL)
+                  throw sranipatch::CaptureUnavailable(
                     "Camera has not delivered a valid frame for five seconds"
                   );
               }
             }
-            catch (const sof::CaptureUnavailable& error)
+            catch (const sranipatch::CaptureUnavailable& error)
             {
               capture_connected.store(false, std::memory_order_release);
               std::cerr << "Camera unavailable: " << error.what() << "; waiting for USB device\n";
-              sof::wait_for_capture_device(stop, error.new_arrival_required());
+              sranipatch::wait_for_capture_device(stop, error.new_arrival_required());
               if (!stop.stop_requested())
                 std::cout << "VIVE Facial Tracker detected; reconnecting\n";
             }
@@ -174,10 +174,10 @@ namespace
         }
       });
       std::cout << "Server running; IPC=" << options.ipc << '\n';
-      sof::Frame frame;
-      std::array<float, sof::max_parameters> values {};
+      sranipatch::Frame frame;
+      std::array<float, sranipatch::max_parameters> values {};
       std::uint64_t last_sequence {}, previous_captured {}, previous_inferred {};
-      auto rate_time = sof::monotonic_ns();
+      auto rate_time = sranipatch::monotonic_ns();
       std::uint64_t publish_time {};
       std::uint64_t preview_time {};
       while (!interrupted)
@@ -192,15 +192,15 @@ namespace
           if (frame.sequence > last_sequence + 1)
             status.frames_skipped += frame.sequence - last_sequence - 1;
           last_sequence = frame.sequence;
-          const auto begin = sof::monotonic_ns();
+          const auto begin = sranipatch::monotonic_ns();
           if (begin - preview_time >= 33'000'000ULL)
           {
             if (ipc.publish_frame(frame))
               preview_time = begin;
           }
-          const auto inference_begin = sof::monotonic_ns();
+          const auto inference_begin = sranipatch::monotonic_ns();
           status.parameter_count = inference->run(frame, status.parameters);
-          const auto end = sof::monotonic_ns();
+          const auto end = sranipatch::monotonic_ns();
           ++status.frames_inferred;
           status.inference_ms = static_cast<float>(end - inference_begin) / 1.0e6F;
           status.frame_age_ms = static_cast<float>(end - frame.timestamp_ns) / 1.0e6F;
@@ -209,7 +209,7 @@ namespace
           if (!osc.send(std::span(values.data(), status.parameter_count)))
             ++status.osc_failures;
         }
-        const auto now = sof::monotonic_ns();
+        const auto now = sranipatch::monotonic_ns();
         status.frames_captured = captured.load(std::memory_order_relaxed);
         if (now - rate_time >= 1'000'000'000ULL)
         {
@@ -225,9 +225,9 @@ namespace
                     << " frames\n";
         }
         if (!capture_connected.load(std::memory_order_acquire))
-          status.state = sof::ServerState::waiting_for_camera;
+          status.state = sranipatch::ServerState::waiting_for_camera;
         else
-          status.state = sof::ServerState::running;
+          status.state = sranipatch::ServerState::running;
         if (now - publish_time >= 33'000'000ULL)
         {
           status.heartbeat_ns = now;
@@ -237,18 +237,18 @@ namespace
       }
       capture.request_stop();
       capture.join();
-      status.state = sof::ServerState::stopped;
+      status.state = sranipatch::ServerState::stopped;
     }
     catch (const std::exception& error)
     {
-      status.state = sof::ServerState::fault;
-      sof::set_text(status.error, error.what());
+      status.state = sranipatch::ServerState::fault;
+      sranipatch::set_text(status.error, error.what());
       std::cerr << "Server fault: " << error.what() << '\n';
     }
-    status.heartbeat_ns = sof::monotonic_ns();
+    status.heartbeat_ns = sranipatch::monotonic_ns();
     for (int i = 0; i < 10 && !ipc.publish(status); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    return status.state == sof::ServerState::fault ? 1 : 0;
+    return status.state == sranipatch::ServerState::fault ? 1 : 0;
   }
 }  // namespace
 

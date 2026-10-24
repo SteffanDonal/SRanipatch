@@ -1,7 +1,7 @@
 #pragma once
 
-#include "sof/lip.hpp"
-#include "sof/protocol.hpp"
+#include "sranipatch/lip.hpp"
+#include "sranipatch/protocol.hpp"
 
 #include <array>
 #include <cstdint>
@@ -9,7 +9,7 @@
 #include <span>
 #include <vector>
 
-namespace sof
+namespace sranipatch
 {
   struct HeadVertex
   {
@@ -38,4 +38,4 @@ namespace sof
     std::vector<std::uint32_t> indices_;
     std::array<std::vector<HeadVertex>, lip_parameter_count> targets_;
   };
-}  // namespace sof
+}  // namespace sranipatch

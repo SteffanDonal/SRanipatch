@@ -1,10 +1,10 @@
-#include "sof/lip.hpp"
+#include "sranipatch/lip.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <span>
 
-namespace sof
+namespace sranipatch
 {
   namespace
   {
@@ -165,4 +165,4 @@ namespace sof
     output[36] = output[27] * output[30];
     return output;
   }
-}  // namespace sof
+}  // namespace sranipatch

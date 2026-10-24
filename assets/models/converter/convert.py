@@ -106,7 +106,7 @@ def export(weights: dict[str, np.ndarray], output_path: Path) -> None:
     )
     model = helper.make_model(
         graph,
-        producer_name="sranipal-on-frame",
+        producer_name="sranipatch",
         opset_imports=[helper.make_opsetid("", 13)],
     )
     onnx.checker.check_model(model)
