@@ -276,7 +276,7 @@ namespace
                   std::span(status.parameters.data(), count), render_width, render_width / 2
                 );
                 ImGui::Image(static_cast<ImTextureID>(texture), ImVec2(side, side * 0.5F),
-                  ImVec2(0, 1), ImVec2(1, 0));
+                  ImVec2(1, 1), ImVec2(0, 0));
               }
               catch (const std::exception& error)
               {
