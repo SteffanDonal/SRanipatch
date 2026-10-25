@@ -15,8 +15,10 @@
 #include <cfloat>
 #include <csignal>
 #include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <memory>
@@ -123,6 +125,37 @@ namespace
     ImGui::PopFont();
   }
 
+  struct WindowRenderer
+  {
+    std::function<void()> render;
+    std::exception_ptr error;
+    bool rendering {};
+
+    void draw(GLFWwindow* window, bool refresh)
+    {
+      if (rendering || error)
+        return;
+      int width {}, height {};
+      glfwGetFramebufferSize(window, &width, &height);
+      if (width <= 0 || height <= 0)
+        return;
+      rendering = true;
+      try
+      {
+        render();
+        glfwSwapBuffers(window);
+        if (refresh)
+          glFinish();
+      }
+      catch (...)
+      {
+        rendering = false;
+        throw;
+      }
+      rendering = false;
+    }
+  };
+
   int run(const Options& options)
   {
     const auto font_path = default_asset_path("Quicksand-Medium.ttf");
@@ -191,6 +224,7 @@ namespace
     glTexParameteri(GL_TEXTURE_2D, texture_swizzle_blue, GL_RED);
     std::uint32_t texture_width {}, texture_height {};
     int camera_view { 1 };
+
     std::unique_ptr<sranipatch::HeadPreview> head;
     std::string head_error;
     try
@@ -201,9 +235,9 @@ namespace
     {
       head_error = error.what();
     }
-    while (!interrupted && !glfwWindowShouldClose(window))
-    {
-      glfwPollEvents();
+
+    WindowRenderer renderer;
+    renderer.render = [&] {
       const auto now = sranipatch::monotonic_ns();
       if (!ipc && now >= retry_at)
       {
@@ -396,8 +430,39 @@ namespace
       glClearColor(0.08F, 0.09F, 0.11F, 1.0F);
       glClear(GL_COLOR_BUFFER_BIT);
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-      glfwSwapBuffers(window);
+    };
+    glfwSetWindowUserPointer(window, &renderer);
+
+    // GLFW fixes the order and types of the framebuffer dimensions.
+    // NOLINTBEGIN(bugprone-easily-swappable-parameters)
+    glfwSetFramebufferSizeCallback(
+      window, [](GLFWwindow*, int width, int height) { glViewport(0, 0, width, height); }
+    );
+    // NOLINTEND(bugprone-easily-swappable-parameters)
+    glfwSetWindowRefreshCallback(window, [](GLFWwindow* refreshed_window) {
+      auto& renderer = *static_cast<WindowRenderer*>(glfwGetWindowUserPointer(refreshed_window));
+      try
+      {
+        renderer.draw(refreshed_window, true);
+      }
+      catch (...)
+      {
+        renderer.error = std::current_exception();
+      }
+    });
+
+    while (!interrupted && !glfwWindowShouldClose(window))
+    {
+      glfwPollEvents();
+      if (renderer.error)
+        std::rethrow_exception(renderer.error);
+      if (!interrupted && !glfwWindowShouldClose(window))
+        renderer.draw(window, false);
     }
+
+    glfwSetWindowRefreshCallback(window, nullptr);
+    glfwSetFramebufferSizeCallback(window, nullptr);
+    glfwSetWindowUserPointer(window, nullptr);
     head.reset();
     glDeleteTextures(1, &preview_texture);
     ImGui_ImplOpenGL3_Shutdown();
