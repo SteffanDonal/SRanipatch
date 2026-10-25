@@ -52,7 +52,7 @@ osc_port=9000
 osc_address=/sranipatch/parameters
 ```
 
-The client opens a desktop window by default. `--overlay` presents the same interface as a SteamVR dashboard overlay on Windows and Linux; SteamVR must be running. Dismissing the dashboard hides the interface. Quit, the overlay close control, and SteamVR shutdown exit the client.
+The client opens a desktop window by default. `--overlay` presents the same interface as a SteamVR dashboard overlay on Windows and Linux; SteamVR must be running. Dismissing the dashboard hides the interface. The overlay close control and SteamVR shutdown exit the client.
 
 Linux GUI builds include GLFW Wayland and X11 backends. `sh scripts/run-linux.sh` starts the server and overlay client together, uses X11 for the hidden OpenGL context, and stops the server when the client exits or the job is interrupted.
 

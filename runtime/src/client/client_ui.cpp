@@ -142,15 +142,6 @@ namespace sranipatch
           ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         draw();
-        if (overlay)
-        {
-          ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 80.0F, 8.0F));
-          ImGui::Begin("Overlay controls", nullptr,
-            ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
-          if (ImGui::Button("Quit"))
-            glfwSetWindowShouldClose(window, GLFW_TRUE);
-          ImGui::End();
-        }
         ImGui::Render();
         if (overlay)
           overlay->bind_target();
