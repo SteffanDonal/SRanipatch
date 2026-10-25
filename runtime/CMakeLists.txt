@@ -171,10 +171,11 @@ if(SRANIPATCH_BUILD_CLIENT)
         src/client/head_preview.cpp
         src/client/style.cpp
         src/client/parameter_grid.cpp
+        src/client/performance_plot.cpp
     )
     target_link_libraries(
         sranipatch-client
-        PRIVATE sranipatch_core sranipatch_imgui sranipatch_head_model
+        PRIVATE sranipatch_core sranipatch_implot sranipatch_head_model
     )
     sranipatch_target(sranipatch-client)
     add_custom_command(

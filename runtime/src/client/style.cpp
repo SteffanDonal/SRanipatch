@@ -1,6 +1,7 @@
 #include "style.hpp"
 
 #include <imgui.h>
+#include <implot.h>
 
 namespace sranipatch
 {
@@ -8,6 +9,7 @@ namespace sranipatch
   {
     ImGui::StyleColorsDark();
     auto& style = ImGui::GetStyle();
+    auto& plot_style = ImPlot::GetStyle();
     auto* colors = style.Colors;
 
     colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.13f, 0.15f, 1.00f);
@@ -64,9 +66,12 @@ namespace sranipatch
     style.ChildRounding = 6.0f;
     style.FrameRounding = 5.0f;
     style.PopupRounding = 6.0f;
-    style.ScrollbarRounding = 5.0f;
     style.GrabRounding = 4.0f;
     style.TabRounding = 5.0f;
+
+    style.ScrollbarPadding = 3.0f;
+    style.ScrollbarRounding = 3.0f;
+    style.ScrollbarSize = 20.0f;
 
     style.WindowBorderSize = 0.0f;
     style.FrameBorderSize = 0.0f;
@@ -77,5 +82,7 @@ namespace sranipatch
     style.ItemSpacing = ImVec2(10, 10);
     style.ItemInnerSpacing = ImVec2(6, 4);
     style.IndentSpacing = 20.0f;
+
+    plot_style.PlotPadding = { 0, 0 };
   }
 }  // namespace sranipatch

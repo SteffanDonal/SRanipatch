@@ -191,6 +191,30 @@ function(sranipatch_add_gui)
         PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends
     )
     target_link_libraries(sranipatch_imgui PUBLIC glfw OpenGL::GL)
+    FetchContent_Declare(
+        implot
+        GIT_REPOSITORY https://github.com/epezent/implot.git
+        GIT_TAG 3a8df61cbec4b5b008fcbd0bc2357cc0a61e8c79
+    )
+    FetchContent_MakeAvailable(implot)
+    add_library(
+        sranipatch_implot
+        STATIC
+        ${implot_SOURCE_DIR}/implot.cpp
+        ${implot_SOURCE_DIR}/implot_items.cpp
+    )
+    target_include_directories(
+        sranipatch_implot
+        SYSTEM
+        PUBLIC ${implot_SOURCE_DIR}
+    )
+    target_link_libraries(sranipatch_implot PUBLIC sranipatch_imgui)
+    install(
+        FILES ${implot_SOURCE_DIR}/LICENSE
+        DESTINATION share/licenses
+        RENAME implot.txt
+        COMPONENT Runtime
+    )
     install(
         FILES ${imgui_SOURCE_DIR}/LICENSE.txt
         DESTINATION share/licenses

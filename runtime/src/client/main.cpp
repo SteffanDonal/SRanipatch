@@ -1,5 +1,6 @@
 #include "head_preview.hpp"
 #include "parameter_grid.hpp"
+#include "performance_plot.hpp"
 #include "sranipatch/ipc.hpp"
 #include "style.hpp"
 
@@ -7,9 +8,11 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <implot.h>
 
 #include <algorithm>
 #include <array>
+#include <cfloat>
 #include <csignal>
 #include <cstdio>
 #include <filesystem>
@@ -104,14 +107,19 @@ namespace
   static void PushStyleCompact()
   {
     ImGuiStyle& style = ImGui::GetStyle();
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, style.FramePadding * 0.6f);
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, style.ItemSpacing * 0.6f);
+    auto frame_padding = style.FramePadding.y * 0.6f;
+    auto cell_padding = style.CellPadding.y * 0.6f;
+    auto item_spacing = style.ItemSpacing.y * 0.6f;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 { frame_padding, frame_padding });
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2 { item_spacing, item_spacing });
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2 { cell_padding, cell_padding });
     ImGui::PushFont(nullptr, 15.0f);
   }
 
   static void PopStyleCompact()
   {
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleVar(3);
     ImGui::PopFont();
   }
 
@@ -139,6 +147,7 @@ namespace
     glfwSwapInterval(1);
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImPlot::CreateContext();
     ImGui::GetIO().IniFilename = nullptr;
     sranipatch::set_dark_pastel_style();
     ImFontConfig font_config;
@@ -147,6 +156,7 @@ namespace
     if (!ImGui::GetIO().Fonts->AddFontFromMemoryTTF(font_data.data(), static_cast<int>(font_data.size()),
           18.0f, &font_config))
     {
+      ImPlot::DestroyContext();
       ImGui::DestroyContext();
       glfwDestroyWindow(window);
       glfwTerminate();
@@ -154,6 +164,7 @@ namespace
     }
     if (!ImGui_ImplGlfw_InitForOpenGL(window, true) || !ImGui_ImplOpenGL3_Init("#version 330"))
     {
+      ImPlot::DestroyContext();
       ImGui::DestroyContext();
       glfwDestroyWindow(window);
       glfwTerminate();
@@ -163,9 +174,7 @@ namespace
     sranipatch::Status status;
     std::string connection_message { "Waiting for server" };
     std::uint64_t retry_at {}, session {};
-    std::array<float, 120> rates {};
-    std::size_t graph_index {};
-    std::uint64_t graph_at {};
+    sranipatch::PerformancePlot performance;
     sranipatch::Frame preview;
     GLuint preview_texture {};
     glGenTextures(1, &preview_texture);
@@ -194,7 +203,7 @@ namespace
     }
     while (!interrupted && !glfwWindowShouldClose(window))
     {
-      glfwWaitEventsTimeout(1.0 / 30.0);
+      glfwPollEvents();
       const auto now = sranipatch::monotonic_ns();
       if (!ipc && now >= retry_at)
       {
@@ -253,12 +262,7 @@ namespace
           ipc.reset();
         }
       }
-      if (now - graph_at > 200'000'000ULL)
-      {
-        rates[graph_index] = fresh ? status.inference_fps : 0.0F;
-        graph_index = (graph_index + 1) % rates.size();
-        graph_at = now;
-      }
+      performance.update(status, fresh && static_cast<bool>(ipc), now);
       ImGui_ImplOpenGL3_NewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
@@ -269,7 +273,6 @@ namespace
       if (ImGui::BeginTable("dashboard", 2, ImGuiTableFlags_Resizable))
       {
         ImGui::TableNextColumn();
-        ImGui::SeparatorText("SRanipatch");
 
         if (ImGui::BeginTable("status", 2))
         {
@@ -304,23 +307,23 @@ namespace
             ImGui::TableNextColumn();
             ImGui::Text("OSC");
             ImGui::TableNextColumn();
-            ImGui::TextWrapped("%s:%u\n%s", status.config.osc_host.data(), status.config.osc_port,
-              status.config.osc_address.data());
+            if (status.osc_failures > 0)
+              ImGui::TextWrapped("%s:%u  Errors: %llu\n%s", status.config.osc_host.data(),
+                status.config.osc_port,
+                static_cast<unsigned long long>(status.osc_failures),
+                status.config.osc_address.data());
+            else
+              ImGui::TextWrapped("%s:%u\n%s", status.config.osc_host.data(), status.config.osc_port,
+                status.config.osc_address.data());
           }
 
           ImGui::EndTable();
         }
 
-        ImGui::SeparatorText("Performance");
-        ImGui::Text("Capture: %.1f fps    Inference: %.1f fps", status.capture_fps, status.inference_fps);
-        ImGui::Text("Inference: %.2f ms    Frame age: %.2f ms", status.inference_ms, status.frame_age_ms);
-        ImGui::Text("Captured: %llu    Inferred: %llu\nSkipped: %llu    OSC failures: %llu",
-          static_cast<unsigned long long>(status.frames_captured),
-          static_cast<unsigned long long>(status.frames_inferred),
-          static_cast<unsigned long long>(status.frames_skipped),
-          static_cast<unsigned long long>(status.osc_failures));
-        ImGui::PlotLines("Inference FPS", rates.data(), static_cast<int>(rates.size()),
-          static_cast<int>(graph_index), nullptr, 0.0F, 120.0F, ImVec2(0, 80));
+        PushStyleCompact();
+        performance.draw(status);
+        PopStyleCompact();
+
         ImGui::TableNextColumn();
         if (ImGui::BeginTabBar("preview"))
         {
@@ -377,13 +380,14 @@ namespace
 
       ImGui::SeparatorText("Parameters");
       PushStyleCompact();
-      if (ImGui::BeginChild("parameters"))
+      if (ImGui::BeginChild("parameters", ImGui::GetContentRegionAvail(), ImGuiChildFlags_Borders))
       {
         const auto count = std::min<std::size_t>(status.parameter_count, sranipatch::max_parameters);
         sranipatch::draw_parameter_grid(std::span(status.parameters.data(), count));
       }
       PopStyleCompact();
       ImGui::EndChild();
+
       ImGui::End();
       ImGui::Render();
       int width {}, height {};
@@ -398,6 +402,7 @@ namespace
     glDeleteTextures(1, &preview_texture);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
+    ImPlot::DestroyContext();
     ImGui::DestroyContext();
     glfwDestroyWindow(window);
     glfwTerminate();
