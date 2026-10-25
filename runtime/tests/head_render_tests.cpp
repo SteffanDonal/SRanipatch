@@ -1,6 +1,7 @@
 #include "head_preview.hpp"
 #include "sranipatch/lip.hpp"
 
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
 
 #include <filesystem>
@@ -42,6 +43,8 @@ int main(int argc, char** argv)
     if (!window)
       throw std::runtime_error("Cannot create hidden OpenGL context");
     glfwMakeContextCurrent(window);
+    if (!gladLoadGL(glfwGetProcAddress) || !GLAD_GL_VERSION_3_3)
+      throw std::runtime_error("OpenGL 3.3 loader initialization failed");
     {
       sranipatch::HeadPreview preview(argv[1]);
       const int size = argc == 5 ? 512 : 256;

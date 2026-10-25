@@ -2,7 +2,7 @@
 
 #include "head_model.hpp"
 
-#include <GLFW/glfw3.h>
+#include <glad/gl.h>
 
 #include <algorithm>
 #include <array>
@@ -15,77 +15,18 @@ namespace sranipatch
 {
   namespace
   {
-    constexpr GLenum array_buffer = 0x8892, element_buffer = 0x8893, dynamic_draw = 0x88E8, static_draw = 0x88E4,
-                     vertex_shader = 0x8B31, fragment_shader = 0x8B30, compile_status = 0x8B81,
-                     link_status = 0x8B82, framebuffer = 0x8D40, framebuffer_binding = 0x8CA6,
-                     renderbuffer = 0x8D41, renderbuffer_binding = 0x8CA7, color_attachment = 0x8CE0,
-                     depth_attachment = 0x8D00, framebuffer_complete = 0x8CD5, depth_component24 = 0x81A6,
-                     rgba8 = 0x8058, clamp_to_edge = 0x812F, current_program = 0x8B8D,
-                     vertex_array_binding = 0x85B5, array_buffer_binding = 0x8894;
-
-    struct Gl
+    GLuint compile(GLenum type, const char* source)
     {
-#define SRANIPATCH_GL(result, name, ...) \
-  using name##Proc = result(APIENTRY*)(__VA_ARGS__); \
-  name##Proc name = load<name##Proc>("gl" #name)
-      SRANIPATCH_GL(GLuint, CreateShader, GLenum);
-      SRANIPATCH_GL(void, ShaderSource, GLuint, GLsizei, const char* const*, const GLint*);
-      SRANIPATCH_GL(void, CompileShader, GLuint);
-      SRANIPATCH_GL(void, GetShaderiv, GLuint, GLenum, GLint*);
-      SRANIPATCH_GL(void, GetShaderInfoLog, GLuint, GLsizei, GLsizei*, char*);
-      SRANIPATCH_GL(void, DeleteShader, GLuint);
-      SRANIPATCH_GL(GLuint, CreateProgram, void);
-      SRANIPATCH_GL(void, AttachShader, GLuint, GLuint);
-      SRANIPATCH_GL(void, LinkProgram, GLuint);
-      SRANIPATCH_GL(void, GetProgramiv, GLuint, GLenum, GLint*);
-      SRANIPATCH_GL(void, GetProgramInfoLog, GLuint, GLsizei, GLsizei*, char*);
-      SRANIPATCH_GL(void, DeleteProgram, GLuint);
-      SRANIPATCH_GL(void, UseProgram, GLuint);
-      SRANIPATCH_GL(GLint, GetUniformLocation, GLuint, const char*);
-      SRANIPATCH_GL(void, UniformMatrix4fv, GLint, GLsizei, GLboolean, const GLfloat*);
-      SRANIPATCH_GL(void, GenVertexArrays, GLsizei, GLuint*);
-      SRANIPATCH_GL(void, BindVertexArray, GLuint);
-      SRANIPATCH_GL(void, DeleteVertexArrays, GLsizei, const GLuint*);
-      SRANIPATCH_GL(void, GenBuffers, GLsizei, GLuint*);
-      SRANIPATCH_GL(void, BindBuffer, GLenum, GLuint);
-      SRANIPATCH_GL(void, BufferData, GLenum, std::ptrdiff_t, const void*, GLenum);
-      SRANIPATCH_GL(void, DeleteBuffers, GLsizei, const GLuint*);
-      SRANIPATCH_GL(void, EnableVertexAttribArray, GLuint);
-      SRANIPATCH_GL(void, VertexAttribPointer, GLuint, GLint, GLenum, GLboolean, GLsizei, const void*);
-      SRANIPATCH_GL(void, GenFramebuffers, GLsizei, GLuint*);
-      SRANIPATCH_GL(void, BindFramebuffer, GLenum, GLuint);
-      SRANIPATCH_GL(void, DeleteFramebuffers, GLsizei, const GLuint*);
-      SRANIPATCH_GL(void, FramebufferTexture2D, GLenum, GLenum, GLenum, GLuint, GLint);
-      SRANIPATCH_GL(GLenum, CheckFramebufferStatus, GLenum);
-      SRANIPATCH_GL(void, GenRenderbuffers, GLsizei, GLuint*);
-      SRANIPATCH_GL(void, BindRenderbuffer, GLenum, GLuint);
-      SRANIPATCH_GL(void, RenderbufferStorage, GLenum, GLenum, GLsizei, GLsizei);
-      SRANIPATCH_GL(void, FramebufferRenderbuffer, GLenum, GLenum, GLenum, GLuint);
-      SRANIPATCH_GL(void, DeleteRenderbuffers, GLsizei, const GLuint*);
-#undef SRANIPATCH_GL
-
-      template <typename Function>
-      static Function load(const char* name)
-      {
-        const auto function = glfwGetProcAddress(name);
-        if (!function)
-          throw std::runtime_error(std::string("Missing OpenGL function: ") + name);
-        return reinterpret_cast<Function>(function);
-      }
-    };
-
-    GLuint compile(const Gl& gl, GLenum type, const char* source)
-    {
-      const GLuint shader = gl.CreateShader(type);
-      gl.ShaderSource(shader, 1, &source, nullptr);
-      gl.CompileShader(shader);
+      const GLuint shader = glCreateShader(type);
+      glShaderSource(shader, 1, &source, nullptr);
+      glCompileShader(shader);
       GLint success {};
-      gl.GetShaderiv(shader, compile_status, &success);
+      glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
       if (!success)
       {
         std::array<char, 2048> message {};
-        gl.GetShaderInfoLog(shader, static_cast<GLsizei>(message.size()), nullptr, message.data());
-        gl.DeleteShader(shader);
+        glGetShaderInfoLog(shader, static_cast<GLsizei>(message.size()), nullptr, message.data());
+        glDeleteShader(shader);
         throw std::runtime_error(std::string("Head shader: ") + message.data());
       }
       return shader;
@@ -94,7 +35,6 @@ namespace sranipatch
     // Rendering happens before the ImGui draw pass; preserve the surrounding GL state.
     struct SavedState
     {
-      const Gl& gl;
       GLint fbo {}, rbo {}, program {}, vao {}, buffer {}, texture {}, depth_function {};
       std::array<GLint, 4> viewport {};
       std::array<GLfloat, 4> clear_color {};
@@ -102,13 +42,13 @@ namespace sranipatch
       const std::array<GLenum, 4> capabilities { GL_DEPTH_TEST, GL_BLEND, GL_CULL_FACE, GL_SCISSOR_TEST };
       std::array<GLboolean, 4> enabled {};
 
-      explicit SavedState(const Gl& functions) : gl(functions)
+      SavedState()
       {
-        glGetIntegerv(framebuffer_binding, &fbo);
-        glGetIntegerv(renderbuffer_binding, &rbo);
-        glGetIntegerv(current_program, &program);
-        glGetIntegerv(vertex_array_binding, &vao);
-        glGetIntegerv(array_buffer_binding, &buffer);
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+        glGetIntegerv(GL_RENDERBUFFER_BINDING, &rbo);
+        glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+        glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
+        glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
         glGetIntegerv(GL_VIEWPORT, viewport.data());
         glGetFloatv(GL_COLOR_CLEAR_VALUE, clear_color.data());
@@ -120,11 +60,11 @@ namespace sranipatch
 
       ~SavedState()
       {
-        gl.BindFramebuffer(framebuffer, static_cast<GLuint>(fbo));
-        gl.BindRenderbuffer(renderbuffer, static_cast<GLuint>(rbo));
-        gl.UseProgram(static_cast<GLuint>(program));
-        gl.BindVertexArray(static_cast<GLuint>(vao));
-        gl.BindBuffer(array_buffer, static_cast<GLuint>(buffer));
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(fbo));
+        glBindRenderbuffer(GL_RENDERBUFFER, static_cast<GLuint>(rbo));
+        glUseProgram(static_cast<GLuint>(program));
+        glBindVertexArray(static_cast<GLuint>(vao));
+        glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(buffer));
         glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(texture));
         glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
         glClearColor(clear_color[0], clear_color[1], clear_color[2], clear_color[3]);
@@ -142,7 +82,6 @@ namespace sranipatch
   struct HeadPreview::Impl
   {
     HeadModel model;
-    Gl gl;
     GLuint program {}, vao {}, vertices {}, indices {}, fbo {}, color {}, depth {};
     GLint projection {};
     GLsizei index_count {};
@@ -152,19 +91,19 @@ namespace sranipatch
 
     ~Impl()
     {
-      gl.DeleteRenderbuffers(1, &depth);
+      glDeleteRenderbuffers(1, &depth);
       glDeleteTextures(1, &color);
-      gl.DeleteFramebuffers(1, &fbo);
-      gl.DeleteBuffers(1, &indices);
-      gl.DeleteBuffers(1, &vertices);
-      gl.DeleteVertexArrays(1, &vao);
+      glDeleteFramebuffers(1, &fbo);
+      glDeleteBuffers(1, &indices);
+      glDeleteBuffers(1, &vertices);
+      glDeleteVertexArrays(1, &vao);
       if (program)
-        gl.DeleteProgram(program);
+        glDeleteProgram(program);
     }
 
     void initialize()
     {
-      const SavedState saved(gl);
+      const SavedState saved;
       if (model.indices().size() > static_cast<std::size_t>(std::numeric_limits<GLsizei>::max()))
         throw std::runtime_error("Too many head triangles to draw");
       index_count = static_cast<GLsizei>(model.indices().size());
@@ -186,68 +125,68 @@ void main() {
     color = vec4(vec3(gray), 1.0);
 }
 )";
-      const GLuint vertex = compile(gl, vertex_shader, vertex_source);
+      const GLuint vertex = compile(GL_VERTEX_SHADER, vertex_source);
       GLuint fragment {};
       try
       {
-        fragment = compile(gl, fragment_shader, fragment_source);
-        program = gl.CreateProgram();
-        gl.AttachShader(program, vertex);
-        gl.AttachShader(program, fragment);
-        gl.LinkProgram(program);
+        fragment = compile(GL_FRAGMENT_SHADER, fragment_source);
+        program = glCreateProgram();
+        glAttachShader(program, vertex);
+        glAttachShader(program, fragment);
+        glLinkProgram(program);
       }
       catch (...)
       {
-        gl.DeleteShader(vertex);
+        glDeleteShader(vertex);
         if (fragment)
-          gl.DeleteShader(fragment);
+          glDeleteShader(fragment);
         throw;
       }
-      gl.DeleteShader(vertex);
-      gl.DeleteShader(fragment);
+      glDeleteShader(vertex);
+      glDeleteShader(fragment);
       GLint success {};
-      gl.GetProgramiv(program, link_status, &success);
+      glGetProgramiv(program, GL_LINK_STATUS, &success);
       if (!success)
       {
         std::array<char, 2048> message {};
-        gl.GetProgramInfoLog(program, static_cast<GLsizei>(message.size()), nullptr, message.data());
+        glGetProgramInfoLog(program, static_cast<GLsizei>(message.size()), nullptr, message.data());
         throw std::runtime_error(std::string("Head shader link: ") + message.data());
       }
-      projection = gl.GetUniformLocation(program, "projection");
-      gl.GenVertexArrays(1, &vao);
-      gl.BindVertexArray(vao);
-      gl.GenBuffers(1, &vertices);
-      gl.BindBuffer(array_buffer, vertices);
-      gl.EnableVertexAttribArray(0);
-      gl.EnableVertexAttribArray(1);
-      gl.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(HeadVertex), nullptr);
-      gl.VertexAttribPointer(
+      projection = glGetUniformLocation(program, "projection");
+      glGenVertexArrays(1, &vao);
+      glBindVertexArray(vao);
+      glGenBuffers(1, &vertices);
+      glBindBuffer(GL_ARRAY_BUFFER, vertices);
+      glEnableVertexAttribArray(0);
+      glEnableVertexAttribArray(1);
+      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(HeadVertex), nullptr);
+      glVertexAttribPointer(
         1, 3, GL_FLOAT, GL_FALSE, sizeof(HeadVertex),
         // NOLINTNEXTLINE(performance-no-int-to-ptr): OpenGL encodes byte offsets as pointers.
         reinterpret_cast<const void*>(offsetof(HeadVertex, normal))
       );
-      gl.GenBuffers(1, &indices);
-      gl.BindBuffer(element_buffer, indices);
-      gl.BufferData(element_buffer, static_cast<std::ptrdiff_t>(model.indices().size_bytes()),
-        model.indices().data(), static_draw);
-      gl.GenFramebuffers(1, &fbo);
-      gl.BindFramebuffer(framebuffer, fbo);
+      glGenBuffers(1, &indices);
+      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+      glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(model.indices().size_bytes()),
+        model.indices().data(), GL_STATIC_DRAW);
+      glGenFramebuffers(1, &fbo);
+      glBindFramebuffer(GL_FRAMEBUFFER, fbo);
       glGenTextures(1, &color);
       glBindTexture(GL_TEXTURE_2D, color);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp_to_edge);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp_to_edge);
-      gl.FramebufferTexture2D(framebuffer, color_attachment, GL_TEXTURE_2D, color, 0);
-      gl.GenRenderbuffers(1, &depth);
-      gl.BindRenderbuffer(renderbuffer, depth);
-      gl.FramebufferRenderbuffer(framebuffer, depth_attachment, renderbuffer, depth);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color, 0);
+      glGenRenderbuffers(1, &depth);
+      glBindRenderbuffer(GL_RENDERBUFFER, depth);
+      glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
     }
 
     unsigned int render(std::span<const Parameter> parameters, int requested_width, int requested_height)
     {
-      const SavedState saved(gl);
-      gl.BindFramebuffer(framebuffer, fbo);
+      const SavedState saved;
+      glBindFramebuffer(GL_FRAMEBUFFER, fbo);
       requested_width = std::clamp(requested_width, 64, 1024);
       requested_height = std::clamp(requested_height, 32, 1024);
       if (requested_width != width || requested_height != height)
@@ -255,10 +194,10 @@ void main() {
         width = requested_width;
         height = requested_height;
         glBindTexture(GL_TEXTURE_2D, color);
-        glTexImage2D(GL_TEXTURE_2D, 0, rgba8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        gl.BindRenderbuffer(renderbuffer, depth);
-        gl.RenderbufferStorage(renderbuffer, depth_component24, width, height);
-        if (gl.CheckFramebufferStatus(framebuffer) != framebuffer_complete)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glBindRenderbuffer(GL_RENDERBUFFER, depth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
           throw std::runtime_error("Cannot create head preview framebuffer");
       }
       model.deform(parameters);
@@ -271,15 +210,15 @@ void main() {
       glDisable(GL_SCISSOR_TEST);
       glClearColor(0.08F, 0.09F, 0.11F, 1.0F);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      gl.UseProgram(program);
+      glUseProgram(program);
       // Orthographic camera looking along +Z; Y=0 maps to the top clip plane (Y=1).
       const float aspect = static_cast<float>(width) / static_cast<float>(height);
       const std::array<float, 16> matrix { 1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, -0.25F, 0, 0, 1, 0, 1 };
-      gl.UniformMatrix4fv(projection, 1, GL_FALSE, matrix.data());
-      gl.BindVertexArray(vao);
-      gl.BindBuffer(array_buffer, vertices);
-      gl.BufferData(array_buffer, static_cast<std::ptrdiff_t>(model.vertices().size_bytes()),
-        model.vertices().data(), dynamic_draw);
+      glUniformMatrix4fv(projection, 1, GL_FALSE, matrix.data());
+      glBindVertexArray(vao);
+      glBindBuffer(GL_ARRAY_BUFFER, vertices);
+      glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(model.vertices().size_bytes()),
+        model.vertices().data(), GL_DYNAMIC_DRAW);
       glDrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_INT, nullptr);
       return color;
     }

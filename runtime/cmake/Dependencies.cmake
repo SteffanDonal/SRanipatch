@@ -127,6 +127,23 @@ function(sranipatch_add_opencv)
 endfunction()
 
 function(sranipatch_add_gui)
+    add_library(
+        sranipatch_glad
+        STATIC
+        ${PROJECT_SOURCE_DIR}/third_party/glad/src/gl.c
+    )
+    target_include_directories(
+        sranipatch_glad
+        SYSTEM
+        PUBLIC ${PROJECT_SOURCE_DIR}/third_party/glad/include
+    )
+    target_compile_definitions(sranipatch_glad PUBLIC GLFW_INCLUDE_NONE)
+    install(
+        FILES ${PROJECT_SOURCE_DIR}/third_party/glad/LICENSE
+        DESTINATION share/licenses
+        RENAME glad.txt
+        COMPONENT Runtime
+    )
     FetchContent_Declare(
         cgltf
         GIT_REPOSITORY https://github.com/jkuhlmann/cgltf.git

@@ -175,7 +175,11 @@ if(SRANIPATCH_BUILD_CLIENT)
     )
     target_link_libraries(
         sranipatch-client
-        PRIVATE sranipatch_core sranipatch_implot sranipatch_head_model
+        PRIVATE
+            sranipatch_core
+            sranipatch_implot
+            sranipatch_head_model
+            sranipatch_glad
     )
     sranipatch_target(sranipatch-client)
     add_custom_command(
@@ -224,7 +228,7 @@ if(BUILD_TESTING)
         )
         target_link_libraries(
             sranipatch-head-render-tests
-            PRIVATE sranipatch_head_model sranipatch_imgui
+            PRIVATE sranipatch_head_model sranipatch_glad glfw
         )
         sranipatch_target(sranipatch-head-render-tests)
     endif()

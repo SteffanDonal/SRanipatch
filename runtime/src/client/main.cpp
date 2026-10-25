@@ -4,6 +4,7 @@
 #include "sranipatch/ipc.hpp"
 #include "style.hpp"
 
+#include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -177,6 +178,12 @@ namespace
       throw std::runtime_error("OpenGL 3.3 window creation failed");
     }
     glfwMakeContextCurrent(window);
+    if (!gladLoadGL(glfwGetProcAddress) || !GLAD_GL_VERSION_3_3)
+    {
+      glfwDestroyWindow(window);
+      glfwTerminate();
+      throw std::runtime_error("OpenGL 3.3 loader initialization failed");
+    }
     glfwSwapInterval(1);
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -214,14 +221,10 @@ namespace
     glBindTexture(GL_TEXTURE_2D, preview_texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // Windows' OpenGL 1.1 headers omit this OpenGL 3.3 constant.
-    constexpr GLint clamp_to_edge = 0x812F;
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clamp_to_edge);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clamp_to_edge);
-    constexpr GLenum texture_swizzle_green = 0x8E43;
-    constexpr GLenum texture_swizzle_blue = 0x8E44;
-    glTexParameteri(GL_TEXTURE_2D, texture_swizzle_green, GL_RED);
-    glTexParameteri(GL_TEXTURE_2D, texture_swizzle_blue, GL_RED);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_RED);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_RED);
     std::uint32_t texture_width {}, texture_height {};
     int camera_view { 1 };
 
@@ -273,8 +276,7 @@ namespace
             {
               texture_width = preview.width;
               texture_height = preview.height;
-              constexpr GLint red8 = 0x8229;
-              glTexImage2D(GL_TEXTURE_2D, 0, red8, static_cast<GLsizei>(preview.width),
+              glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, static_cast<GLsizei>(preview.width),
                 static_cast<GLsizei>(preview.height), 0, GL_RED, GL_UNSIGNED_BYTE,
                 preview.luma.data());
             }
