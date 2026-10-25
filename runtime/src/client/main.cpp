@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <csignal>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -341,7 +342,7 @@ namespace
 
 // Exceptions from the body are caught below; clang-tidy misidentifies MSVC exception inheritance.
 // NOLINTNEXTLINE(bugprone-exception-escape)
-int main(int argc, char** argv)
+int client_main(int argc, char** argv)
 {
   try
   {
@@ -357,7 +358,23 @@ int main(int argc, char** argv)
   }
   catch (const std::exception& error)
   {
+#ifdef _WIN32
+    MessageBoxA(nullptr, error.what(), "SRanipatch client", MB_OK | MB_ICONERROR);
+#else
     std::cerr << error.what() << '\n';
+#endif
     return 1;
   }
 }
+
+#ifdef _WIN32
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+{
+  return client_main(__argc, __argv);
+}
+#else
+int main(int argc, char** argv)
+{
+  return client_main(argc, argv);
+}
+#endif

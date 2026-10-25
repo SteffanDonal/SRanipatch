@@ -196,6 +196,13 @@ if(SRANIPATCH_BUILD_CLIENT)
             sranipatch_observation
     )
     sranipatch_target(sranipatch-client)
+    if(WIN32)
+        set_target_properties(
+            sranipatch-client
+            PROPERTIES WIN32_EXECUTABLE TRUE
+        )
+        target_link_libraries(sranipatch-client PRIVATE user32)
+    endif()
     add_custom_command(
         TARGET sranipatch-client
         POST_BUILD
