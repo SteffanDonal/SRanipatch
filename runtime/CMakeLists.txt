@@ -169,6 +169,7 @@ if(SRANIPATCH_BUILD_CLIENT)
         sranipatch-client
         src/client/main.cpp
         src/client/head_preview.cpp
+        src/client/style.cpp
     )
     target_link_libraries(
         sranipatch-client
@@ -182,9 +183,22 @@ if(SRANIPATCH_BUILD_CLIENT)
             ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/head.glb"
             "$<TARGET_FILE_DIR:sranipatch-client>/head.glb"
+        COMMAND
+            ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/Quicksand-Medium.ttf"
+            "$<TARGET_FILE_DIR:sranipatch-client>/Quicksand-Medium.ttf"
     )
     install(TARGETS sranipatch-client RUNTIME DESTINATION bin COMPONENT Runtime)
-    install(FILES head.glb DESTINATION bin COMPONENT Runtime)
+    install(
+        FILES head.glb assets/fonts/Quicksand-Medium.ttf
+        DESTINATION bin
+        COMPONENT Runtime
+    )
+    install(
+        FILES assets/fonts/Quicksand-OFL.txt
+        DESTINATION share/licenses
+        COMPONENT Runtime
+    )
 endif()
 
 if(BUILD_TESTING)

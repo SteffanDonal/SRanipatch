@@ -167,7 +167,7 @@ function(sranipatch_add_gui)
     FetchContent_Declare(
         imgui
         GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG f5befd2d29e66809cd1110a152e375a7f1981f06
+        GIT_TAG v1.93.0
     )
     FetchContent_MakeAvailable(glfw imgui)
     find_package(OpenGL REQUIRED)
@@ -180,6 +180,10 @@ function(sranipatch_add_gui)
         ${imgui_SOURCE_DIR}/imgui_widgets.cpp
         ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
         ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+    target_compile_definitions(
+        sranipatch_imgui
+        PUBLIC IMGUI_DEFINE_MATH_OPERATORS
     )
     target_include_directories(
         sranipatch_imgui

@@ -1,5 +1,7 @@
 #include "head_preview.hpp"
+#include "parameter_grid.hpp"
 #include "sranipatch/ipc.hpp"
+#include "style.hpp"
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -11,9 +13,12 @@
 #include <csignal>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <stdexcept>
+#include <vector>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -50,26 +55,26 @@ namespace
     std::cerr << "GLFW: " << message << '\n';
   }
 
-  std::filesystem::path default_head_path()
+  std::filesystem::path default_asset_path(const char* filename)
   {
 #ifdef _WIN32
     std::array<wchar_t, 32768> executable {};
     const auto length = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
     if (length && length < executable.size())
-      return std::filesystem::path(executable.data()).parent_path() / "head.glb";
+      return std::filesystem::path(executable.data()).parent_path() / filename;
 #else
     std::error_code error;
     const auto executable = std::filesystem::read_symlink("/proc/self/exe", error);
     if (!error)
-      return executable.parent_path() / "head.glb";
+      return executable.parent_path() / filename;
 #endif
-    return "head.glb";
+    return filename;
   }
 
   struct Options
   {
     std::string ipc { "sranipatch" };
-    std::filesystem::path head { default_head_path() };
+    std::filesystem::path head { default_asset_path("head.glb") };
     bool help {};
   };
 
@@ -96,8 +101,27 @@ namespace
     return result;
   }
 
+  static void PushStyleCompact()
+  {
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, style.FramePadding * 0.6f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, style.ItemSpacing * 0.6f);
+    ImGui::PushFont(nullptr, 15.0f);
+  }
+
+  static void PopStyleCompact()
+  {
+    ImGui::PopStyleVar(2);
+    ImGui::PopFont();
+  }
+
   int run(const Options& options)
   {
+    const auto font_path = default_asset_path("Quicksand-Medium.ttf");
+    std::ifstream font_file(font_path, std::ios::binary);
+    std::vector<char> font_data(std::istreambuf_iterator<char> { font_file }, {});
+    if (font_file.bad() || font_data.empty())
+      throw std::runtime_error("Cannot read bundled font: " + font_path.string());
     const auto& name = options.ipc;
     glfwSetErrorCallback(glfw_error);
     if (!glfwInit())
@@ -116,7 +140,18 @@ namespace
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::GetIO().IniFilename = nullptr;
-    ImGui::StyleColorsDark();
+    sranipatch::set_dark_pastel_style();
+    ImFontConfig font_config;
+    font_config.FontDataOwnedByAtlas = false;
+    std::snprintf(font_config.Name, sizeof(font_config.Name), "Quicksand Medium");
+    if (!ImGui::GetIO().Fonts->AddFontFromMemoryTTF(font_data.data(), static_cast<int>(font_data.size()),
+          18.0f, &font_config))
+    {
+      ImGui::DestroyContext();
+      glfwDestroyWindow(window);
+      glfwTerminate();
+      throw std::runtime_error("Cannot load bundled Quicksand font");
+    }
     if (!ImGui_ImplGlfw_InitForOpenGL(window, true) || !ImGui_ImplOpenGL3_Init("#version 330"))
     {
       ImGui::DestroyContext();
@@ -146,7 +181,7 @@ namespace
     glTexParameteri(GL_TEXTURE_2D, texture_swizzle_green, GL_RED);
     glTexParameteri(GL_TEXTURE_2D, texture_swizzle_blue, GL_RED);
     std::uint32_t texture_width {}, texture_height {};
-    int camera_view {};
+    int camera_view { 1 };
     std::unique_ptr<sranipatch::HeadPreview> head;
     std::string head_error;
     try
@@ -231,19 +266,62 @@ namespace
       ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
       ImGui::Begin("Server", nullptr,
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-      if (ImGui::Button("Quit") || ImGui::IsKeyPressed(ImGuiKey_Escape))
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-      ImGui::SameLine();
-      ImGui::Text("Channel: %s", name.c_str());
-      ImGui::Text("Status: %s%s", state_name(status.state), fresh ? "" : " (offline)");
-      if (!ipc)
-        ImGui::TextWrapped("%s", connection_message.c_str());
-      if (status.error[0])
-        ImGui::TextWrapped("%s", status.error.data());
       if (ImGui::BeginTable("dashboard", 2, ImGuiTableFlags_Resizable))
       {
         ImGui::TableNextColumn();
-        ImGui::SeparatorText("Preview");
+        ImGui::SeparatorText("SRanipatch");
+
+        if (ImGui::BeginTable("status", 2))
+        {
+          ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed);
+          ImGui::TableSetupColumn("control", ImGuiTableColumnFlags_WidthStretch);
+
+          ImGui::TableNextColumn();
+          ImGui::Text("Status");
+          ImGui::TableNextColumn();
+          ImGui::TextWrapped("%s%s", state_name(status.state), fresh ? "" : " (offline)");
+
+          if (!ipc)
+          {
+            ImGui::TableNextColumn();
+            ImGui::TableNextColumn();
+            ImGui::TextWrapped("%s", connection_message.c_str());
+          }
+          else
+          {
+            if (status.error[0])
+            {
+              ImGui::TableNextColumn();
+              ImGui::TableNextColumn();
+              ImGui::TextWrapped("%s", status.error.data());
+            }
+
+            ImGui::TableNextColumn();
+            ImGui::Text("Threads");
+            ImGui::TableNextColumn();
+            ImGui::Text("%u", status.config.threads);
+
+            ImGui::TableNextColumn();
+            ImGui::Text("OSC");
+            ImGui::TableNextColumn();
+            ImGui::TextWrapped("%s:%u\n%s", status.config.osc_host.data(), status.config.osc_port,
+              status.config.osc_address.data());
+          }
+
+          ImGui::EndTable();
+        }
+
+        ImGui::SeparatorText("Performance");
+        ImGui::Text("Capture: %.1f fps    Inference: %.1f fps", status.capture_fps, status.inference_fps);
+        ImGui::Text("Inference: %.2f ms    Frame age: %.2f ms", status.inference_ms, status.frame_age_ms);
+        ImGui::Text("Captured: %llu    Inferred: %llu\nSkipped: %llu    OSC failures: %llu",
+          static_cast<unsigned long long>(status.frames_captured),
+          static_cast<unsigned long long>(status.frames_inferred),
+          static_cast<unsigned long long>(status.frames_skipped),
+          static_cast<unsigned long long>(status.osc_failures));
+        ImGui::PlotLines("Inference FPS", rates.data(), static_cast<int>(rates.size()),
+          static_cast<int>(graph_index), nullptr, 0.0F, 120.0F, ImVec2(0, 80));
+        ImGui::TableNextColumn();
         if (ImGui::BeginTabBar("preview"))
         {
           if (ImGui::BeginTabItem("Blendshapes"))
@@ -276,7 +354,7 @@ namespace
           }
           if (ImGui::BeginTabItem("Camera"))
           {
-            ImGui::Combo("View", &camera_view, "Stereo (packed)\0Left camera\0Right camera\0");
+            ImGui::Combo("View", &camera_view, "Both\0Left\0Right\0");
             if (!preview.luma.empty())
             {
               const float side = std::min(400.0F, ImGui::GetContentRegionAvail().x);
@@ -286,7 +364,6 @@ namespace
                 side * static_cast<float>(preview.height) / static_cast<float>(preview.width);
               ImGui::Image(static_cast<ImTextureID>(preview_texture), ImVec2(side, height),
                 ImVec2(left, 0), ImVec2(right, 1));
-              ImGui::Text("Frame %llu", static_cast<unsigned long long>(preview.sequence));
             }
             else
               ImGui::TextUnformatted("Waiting for camera frames...");
@@ -294,25 +371,12 @@ namespace
           }
           ImGui::EndTabBar();
         }
-        ImGui::TableNextColumn();
-        ImGui::SeparatorText("Performance");
-        ImGui::Text("Capture: %.1f fps    Inference: %.1f fps", status.capture_fps, status.inference_fps);
-        ImGui::Text("Inference: %.2f ms    Frame age: %.2f ms", status.inference_ms, status.frame_age_ms);
-        ImGui::Text("Captured: %llu    Inferred: %llu\nSkipped: %llu    OSC failures: %llu",
-          static_cast<unsigned long long>(status.frames_captured),
-          static_cast<unsigned long long>(status.frames_inferred),
-          static_cast<unsigned long long>(status.frames_skipped),
-          static_cast<unsigned long long>(status.osc_failures));
-        ImGui::PlotLines("Inference FPS", rates.data(), static_cast<int>(rates.size()),
-          static_cast<int>(graph_index), nullptr, 0.0F, 120.0F, ImVec2(0, 80));
-        ImGui::SeparatorText("Configuration");
-        ImGui::Text("VIVE Facial Tracker: %ux%u @ %u fps    MNN threads: %u", sranipatch::capture_width,
-          sranipatch::capture_height, sranipatch::capture_fps, status.config.threads);
-        ImGui::TextWrapped("OSC: %s:%u %s", status.config.osc_host.data(), status.config.osc_port,
-          status.config.osc_address.data());
+
         ImGui::EndTable();
       }
+
       ImGui::SeparatorText("Parameters");
+      PushStyleCompact();
       if (ImGui::BeginChild("parameters"))
       {
         const auto count = std::min<std::size_t>(status.parameter_count, sranipatch::max_parameters);
@@ -362,6 +426,7 @@ namespace
           ImGui::PopID();
         }
       }
+      PopStyleCompact();
       ImGui::EndChild();
       ImGui::End();
       ImGui::Render();
