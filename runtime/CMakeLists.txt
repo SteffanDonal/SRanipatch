@@ -170,6 +170,7 @@ if(SRANIPATCH_BUILD_CLIENT)
         src/client/main.cpp
         src/client/head_preview.cpp
         src/client/style.cpp
+        src/client/parameter_grid.cpp
     )
     target_link_libraries(
         sranipatch-client

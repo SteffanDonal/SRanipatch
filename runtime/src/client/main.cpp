@@ -380,51 +380,7 @@ namespace
       if (ImGui::BeginChild("parameters"))
       {
         const auto count = std::min<std::size_t>(status.parameter_count, sranipatch::max_parameters);
-        bool has_group = false;
-        for (int group = 0; group < 3; ++group)
-        {
-          bool table_open = false;
-          ImGui::PushID(group);
-          for (std::size_t i = 0; i < count; ++i)
-          {
-            const std::string_view parameter_name(status.parameters[i].name.data());
-            const int parameter_group = parameter_name.starts_with("mouth_") ? 0
-              : parameter_name.starts_with("tongue_")                        ? 2
-                                                                             : 1;
-            if (parameter_group != group)
-              continue;
-            if (!table_open)
-            {
-              if (has_group)
-                ImGui::Separator();
-              table_open = ImGui::BeginTable("sliders", 4, ImGuiTableFlags_SizingStretchSame);
-              if (!table_open)
-                break;
-              has_group = true;
-            }
-            ImGui::TableNextColumn();
-            ImGui::PushID(static_cast<int>(i));
-            float value = status.parameters[i].value;
-            ImGui::SetNextItemWidth(-1.0F);
-            ImGui::BeginDisabled();
-            ImGui::SliderFloat("##value", &value, 0.0F, 1.0F, "", ImGuiSliderFlags_NoInput);
-            ImGui::EndDisabled();
-            const auto min = ImGui::GetItemRectMin();
-            const auto max = ImGui::GetItemRectMax();
-            const auto* label = status.parameters[i].name.data();
-            const auto size = ImGui::CalcTextSize(label);
-            const ImVec4 clip(min.x, min.y, max.x, max.y);
-            ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
-              ImVec2(min.x + ImGui::GetStyle().FramePadding.x,
-                min.y + (max.y - min.y - size.y) * 0.5F),
-              ImGui::GetColorU32(ImGuiCol_Text), label, nullptr,
-              0.0F, &clip);
-            ImGui::PopID();
-          }
-          if (table_open)
-            ImGui::EndTable();
-          ImGui::PopID();
-        }
+        sranipatch::draw_parameter_grid(std::span(status.parameters.data(), count));
       }
       PopStyleCompact();
       ImGui::EndChild();
