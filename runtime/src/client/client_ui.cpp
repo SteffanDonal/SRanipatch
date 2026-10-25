@@ -1,5 +1,6 @@
-#include "desktop.hpp"
+#include "client_ui.hpp"
 
+#include "overlay.hpp"
 #include "style.hpp"
 
 #include <glad/gl.h>
@@ -9,6 +10,7 @@
 #include <imgui_impl_opengl3.h>
 #include <implot.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <exception>
 #include <fstream>
@@ -19,19 +21,23 @@
 
 namespace sranipatch
 {
-  struct Desktop::Impl
+  struct ClientUi::Impl
   {
+    static constexpr SurfaceSize initial_size { 900, 720 };
     GLFWwindow* window {};
+    std::unique_ptr<Overlay> overlay;
     bool glfw {}, imgui {}, implot {}, glfw_backend {}, opengl_backend {}, rendering {};
     std::vector<char> font_data;
     std::function<void()> draw;
     std::exception_ptr error;
+    double last_frame_time {};
 
     ~Impl()
     {
       detach();
       if (window)
         glfwMakeContextCurrent(window);
+      overlay.reset();
       if (opengl_backend)
         ImGui_ImplOpenGL3_Shutdown();
       if (glfw_backend)
@@ -46,7 +52,7 @@ namespace sranipatch
         glfwTerminate();
     }
 
-    void initialize(const std::filesystem::path& font)
+    void initialize(const std::filesystem::path& font, Presentation presentation)
     {
       std::ifstream file(font, std::ios::binary);
       font_data.assign(std::istreambuf_iterator<char> { file }, {});
@@ -59,13 +65,17 @@ namespace sranipatch
       glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
       glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
       glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-      window = glfwCreateWindow(900, 720, "SRanipatch", nullptr, nullptr);
+      const bool in_overlay = presentation == Presentation::overlay;
+      glfwWindowHint(GLFW_VISIBLE, in_overlay ? GLFW_FALSE : GLFW_TRUE);
+      window = glfwCreateWindow(initial_size.width, initial_size.height, "SRanipatch", nullptr, nullptr);
       if (!window)
         throw std::runtime_error("OpenGL 3.3 window creation failed");
       glfwMakeContextCurrent(window);
       if (!gladLoadGL(glfwGetProcAddress) || !GLAD_GL_VERSION_3_3)
         throw std::runtime_error("OpenGL 3.3 loader initialization failed");
-      glfwSwapInterval(1);
+      glfwSwapInterval(in_overlay ? 0 : 1);
+      if (in_overlay)
+        overlay = std::make_unique<Overlay>(initial_size);
       IMGUI_CHECKVERSION();
       ImGui::CreateContext();
       imgui = true;
@@ -79,9 +89,12 @@ namespace sranipatch
       if (!ImGui::GetIO().Fonts->AddFontFromMemoryTTF(font_data.data(), static_cast<int>(font_data.size()),
             18.0f, &config))
         throw std::runtime_error("Cannot load bundled Quicksand font");
-      glfw_backend = ImGui_ImplGlfw_InitForOpenGL(window, true);
-      if (!glfw_backend)
-        throw std::runtime_error("GUI window initialization failed");
+      if (!overlay)
+      {
+        glfw_backend = ImGui_ImplGlfw_InitForOpenGL(window, true);
+        if (!glfw_backend)
+          throw std::runtime_error("GUI window initialization failed");
+      }
       opengl_backend = ImGui_ImplOpenGL3_Init("#version 330");
       if (!opengl_backend)
         throw std::runtime_error("GUI renderer initialization failed");
@@ -103,23 +116,54 @@ namespace sranipatch
       if (rendering || error)
         return;
       int width {}, height {};
-      glfwGetFramebufferSize(window, &width, &height);
+      if (overlay)
+      {
+        width = initial_size.width;
+        height = initial_size.height;
+      }
+      else
+        glfwGetFramebufferSize(window, &width, &height);
       if (width <= 0 || height <= 0)
         return;
       rendering = true;
       try
       {
         ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
+        if (overlay)
+        {
+          auto& io = ImGui::GetIO();
+          io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
+          io.DisplayFramebufferScale = ImVec2(1, 1);
+          const double now = glfwGetTime();
+          io.DeltaTime = static_cast<float>(std::clamp(now - last_frame_time, 0.000001, 0.1));
+          last_frame_time = now;
+        }
+        else
+          ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         draw();
+        if (overlay)
+        {
+          ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 80.0F, 8.0F));
+          ImGui::Begin("Overlay controls", nullptr,
+            ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+          if (ImGui::Button("Quit"))
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+          ImGui::End();
+        }
         ImGui::Render();
-        glfwGetFramebufferSize(window, &width, &height);
+        if (overlay)
+          overlay->bind_target();
+        else
+          glfwGetFramebufferSize(window, &width, &height);
         glViewport(0, 0, width, height);
         glClearColor(0.08F, 0.09F, 0.11F, 1.0F);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwSwapBuffers(window);
+        if (overlay)
+          overlay->submit();
+        else
+          glfwSwapBuffers(window);
         if (refresh)
           glFinish();
       }
@@ -135,6 +179,7 @@ namespace sranipatch
     {
       draw = render;
       error = {};
+      last_frame_time = glfwGetTime();
       glfwSetWindowUserPointer(window, this);
       // GLFW fixes the order and types of the framebuffer dimensions.
       // NOLINTBEGIN(bugprone-easily-swappable-parameters)
@@ -142,8 +187,8 @@ namespace sranipatch
         window, [](GLFWwindow*, int width, int height) { glViewport(0, 0, width, height); }
       );
       // NOLINTEND(bugprone-easily-swappable-parameters)
-      glfwSetWindowRefreshCallback(window, [](GLFWwindow* window) {
-        auto& self = *static_cast<Impl*>(glfwGetWindowUserPointer(window));
+      glfwSetWindowRefreshCallback(window, [](GLFWwindow* refreshed_window) {
+        auto& self = *static_cast<Impl*>(glfwGetWindowUserPointer(refreshed_window));
         try
         {
           self.frame(true);
@@ -158,10 +203,14 @@ namespace sranipatch
         while (!interrupted && !glfwWindowShouldClose(window))
         {
           glfwPollEvents();
+          if (overlay && !overlay->poll())
+            break;
           if (error)
             std::rethrow_exception(error);
-          if (!interrupted && !glfwWindowShouldClose(window))
+          if (!interrupted && !glfwWindowShouldClose(window) && (!overlay || overlay->visible()))
             frame(false);
+          if (overlay)
+            overlay->wait_frame();
         }
       }
       catch (...)
@@ -173,14 +222,15 @@ namespace sranipatch
     }
   };
 
-  Desktop::Desktop(const std::filesystem::path& font) : impl_(std::make_unique<Impl>())
+  ClientUi::ClientUi(const std::filesystem::path& font, Presentation presentation)
+    : impl_(std::make_unique<Impl>())
   {
-    impl_->initialize(font);
+    impl_->initialize(font, presentation);
   }
 
-  Desktop::~Desktop() = default;
+  ClientUi::~ClientUi() = default;
 
-  void Desktop::run(const std::function<void()>& draw, const volatile std::sig_atomic_t& interrupted)
+  void ClientUi::run(const std::function<void()>& draw, const volatile std::sig_atomic_t& interrupted)
   {
     impl_->run(draw, interrupted);
   }

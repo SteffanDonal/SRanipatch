@@ -52,7 +52,9 @@ osc_port=9000
 osc_address=/sranipatch/parameters
 ```
 
-Linux GUI builds include both GLFW Wayland and X11 backends. GLFW normally selects the backend from the session environment. On Steam Frame with Gamescope 3.16.28, use Gamescope's XWayland display because its native `xdg-shell` path currently does not route mouse and close events reliably. `sh scripts/run-linux.sh` selects that path, starts the lip-inference server and client together, and always stops the server when the client exits or the job is interrupted.
+The client opens a desktop window by default. `--overlay` presents the same interface as a SteamVR dashboard overlay on Windows and Linux; SteamVR must be running. Dismissing the dashboard hides the interface. Quit, the overlay close control, and SteamVR shutdown exit the client.
+
+Linux GUI builds include GLFW Wayland and X11 backends. `sh scripts/run-linux.sh` starts the server and overlay client together, uses X11 for the hidden OpenGL context, and stops the server when the client exits or the job is interrupted.
 
 Arguments to `scripts/run-linux.sh` are forwarded to the server. For example, `sh scripts/run-linux.sh --precision low` selects MNN's reduced-precision CPU path.
 

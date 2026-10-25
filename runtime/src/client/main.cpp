@@ -1,4 +1,4 @@
-#include "desktop.hpp"
+#include "client_ui.hpp"
 #include "head_preview.hpp"
 #include "observation.hpp"
 #include "parameter_grid.hpp"
@@ -67,6 +67,7 @@ namespace
     std::string ipc { "sranipatch" };
     std::filesystem::path head { default_asset_path("head.glb") };
     bool help {};
+    sranipatch::Presentation presentation { sranipatch::Presentation::desktop };
   };
 
   Options options(int argc, char** argv)
@@ -78,6 +79,11 @@ namespace
       if (key == "--help")
       {
         result.help = true;
+        continue;
+      }
+      if (key == "--overlay")
+      {
+        result.presentation = sranipatch::Presentation::overlay;
         continue;
       }
       if (++i == argc)
@@ -174,7 +180,7 @@ namespace
 
   int run(const Options& options)
   {
-    sranipatch::Desktop desktop(default_asset_path("Quicksand-Medium.ttf"));
+    sranipatch::ClientUi ui(default_asset_path("Quicksand-Medium.ttf"), options.presentation);
     sranipatch::Observation observation(options.ipc);
     sranipatch::PerformancePlot performance;
     CameraTexture camera_texture;
@@ -191,7 +197,7 @@ namespace
       head_error = error.what();
     }
 
-    desktop.run(
+    ui.run(
       [&] {
         const auto& observed = observation.update();
         const auto& status = observed.status;
@@ -351,7 +357,7 @@ int client_main(int argc, char** argv)
     const auto parsed = options(argc, argv);
     if (parsed.help)
     {
-      std::cout << "sranipatch-client [--ipc NAME] [--head PATH]\n";
+      std::cout << "sranipatch-client [--ipc NAME] [--head PATH] [--overlay]\n";
       return 0;
     }
     return run(parsed);

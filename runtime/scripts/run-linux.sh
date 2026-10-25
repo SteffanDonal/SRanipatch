@@ -1,7 +1,6 @@
 #!/bin/sh
 
-# Run both processes as one job. Gamescope 3.16.28 on Steam Frame currently
-# routes input reliably through its XWayland display, not native xdg-shell.
+# Run both processes as one job, presenting the client as a SteamVR dashboard overlay.
 set -u
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -47,7 +46,7 @@ unset WAYLAND_DISPLAY
 cd "$root"
 taskset -c 2-4 "$server" --model ../assets/models/lip_model.mnn "$@" &
 server_pid=$!
-"$client" &
+"$client" --overlay &
 client_pid=$!
 wait "$client_pid"
 exit $?

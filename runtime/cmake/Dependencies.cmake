@@ -172,7 +172,7 @@ function(sranipatch_add_gui)
     set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # Build both desktop backends. GLFW selects from the session environment;
-        # scripts/run-linux.sh explicitly selects XWayland for affected Gamescope builds.
+        # scripts/run-linux.sh uses X11 for the hidden overlay context.
         option(GLFW_BUILD_WAYLAND "Build the GLFW Wayland backend" ON)
         option(GLFW_BUILD_X11 "Build the GLFW X11 backend" ON)
     endif()
@@ -242,6 +242,61 @@ function(sranipatch_add_gui)
         FILES ${glfw_SOURCE_DIR}/LICENSE.md
         DESTINATION share/licenses
         RENAME glfw.txt
+        COMPONENT Runtime
+    )
+endfunction()
+
+function(sranipatch_add_openvr)
+    FetchContent_Declare(
+        openvr
+        GIT_REPOSITORY https://github.com/ValveSoftware/openvr.git
+        GIT_TAG 91825305130f446f82054c1ec3d416321ace0072 # v2.12.14
+        SOURCE_SUBDIR unused
+    )
+    FetchContent_MakeAvailable(openvr)
+    # Build the portable loader rather than depending on SDK prebuilt architectures.
+    add_library(
+        sranipatch_openvr
+        STATIC
+        ${openvr_SOURCE_DIR}/src/openvr_api_public.cpp
+        ${openvr_SOURCE_DIR}/src/jsoncpp.cpp
+        ${openvr_SOURCE_DIR}/src/vrcore/dirtools_public.cpp
+        ${openvr_SOURCE_DIR}/src/vrcore/envvartools_public.cpp
+        ${openvr_SOURCE_DIR}/src/vrcore/pathtools_public.cpp
+        ${openvr_SOURCE_DIR}/src/vrcore/sharedlibtools_public.cpp
+        ${openvr_SOURCE_DIR}/src/vrcore/hmderrors_public.cpp
+        ${openvr_SOURCE_DIR}/src/vrcore/vrpathregistry_public.cpp
+        ${openvr_SOURCE_DIR}/src/vrcore/strtools_public.cpp
+    )
+    target_include_directories(
+        sranipatch_openvr
+        SYSTEM
+        PUBLIC ${openvr_SOURCE_DIR}/headers
+    )
+    target_include_directories(
+        sranipatch_openvr
+        PRIVATE ${openvr_SOURCE_DIR}/src ${openvr_SOURCE_DIR}/src/vrcore
+    )
+    target_compile_definitions(
+        sranipatch_openvr
+        PUBLIC OPENVR_BUILD_STATIC
+        PRIVATE VR_API_PUBLIC VRCORE_NO_PLATFORM
+    )
+    if(WIN32)
+        target_compile_definitions(sranipatch_openvr PRIVATE WIN64)
+    else()
+        target_compile_definitions(sranipatch_openvr PRIVATE LINUX POSIX)
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+            target_compile_definitions(sranipatch_openvr PRIVATE LINUXARM64)
+        else()
+            target_compile_definitions(sranipatch_openvr PRIVATE LINUX64)
+        endif()
+    endif()
+    target_link_libraries(sranipatch_openvr PRIVATE ${CMAKE_DL_LIBS})
+    install(
+        FILES ${openvr_SOURCE_DIR}/LICENSE
+        DESTINATION share/licenses
+        RENAME OpenVR.txt
         COMPONENT Runtime
     )
 endfunction()

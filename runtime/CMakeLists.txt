@@ -15,7 +15,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 option(SRANIPATCH_BUILD_SERVER "Build camera / MNN / OSC server" ON)
-option(SRANIPATCH_BUILD_CLIENT "Build Dear ImGui desktop client" ON)
+option(SRANIPATCH_BUILD_CLIENT "Build Dear ImGui client" ON)
 option(
     SRANIPATCH_ENABLE_IPO
     "Enable release link-time optimization for application code"
@@ -172,6 +172,7 @@ if(SRANIPATCH_BUILD_CLIENT)
         )
     endif()
     sranipatch_add_gui()
+    sranipatch_add_openvr()
     add_library(sranipatch_head_model STATIC src/client/head_model.cpp)
     target_include_directories(sranipatch_head_model PUBLIC src/client)
     target_link_libraries(
@@ -187,7 +188,8 @@ if(SRANIPATCH_BUILD_CLIENT)
     add_executable(
         sranipatch-client
         src/client/main.cpp
-        src/client/desktop.cpp
+        src/client/client_ui.cpp
+        src/client/overlay.cpp
         src/client/head_preview.cpp
         src/client/style.cpp
         src/client/parameter_grid.cpp
@@ -201,6 +203,7 @@ if(SRANIPATCH_BUILD_CLIENT)
             sranipatch_head_model
             sranipatch_glad
             sranipatch_observation
+            sranipatch_openvr
     )
     sranipatch_target(sranipatch-client)
     if(WIN32)
