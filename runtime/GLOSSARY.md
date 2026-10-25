@@ -11,3 +11,5 @@
 **Tracking freshness**: Whether displayed tracking data reflects recent camera activity, independently of server availability.
 
 **Overlay**: The dashboard interface presented as a panel in SteamVR. Hiding the panel and closing the client are distinct actions.
+
+**OSC destination**: The address and port selected by the tracking server to receive tracking parameters. The last destination remains visible while Steam Link is disconnected.

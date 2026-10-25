@@ -57,7 +57,6 @@ namespace
   {
     Options options;
     sranipatch::set_text(options.config.model, "../assets/models/lip_model.mnn");
-    sranipatch::set_text(options.config.osc_host, "127.0.0.1");
     sranipatch::set_text(options.config.osc_address, "/sranipatch/parameters");
     const auto config_path = sranipatch::default_config_path();
     if (sranipatch::load_osc_config(config_path, options.config))
@@ -182,6 +181,7 @@ namespace
       std::uint64_t preview_time {};
       while (!interrupted)
       {
+        osc.refresh();
         if (capture_fault.load(std::memory_order_acquire))
         {
           std::lock_guard lock(error_mutex);
@@ -210,6 +210,7 @@ namespace
             ++status.osc_failures;
         }
         const auto now = sranipatch::monotonic_ns();
+        status.osc_destination = osc.destination();
         status.frames_captured = captured.load(std::memory_order_relaxed);
         if (now - rate_time >= 1'000'000'000ULL)
         {

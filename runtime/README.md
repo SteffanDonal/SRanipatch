@@ -52,6 +52,8 @@ osc_port=9337
 osc_address=/sranipatch/parameters
 ```
 
+On Linux, omitting `osc_host` or setting it to an empty value, `""`, or `null` discovers the Steam Link PC automatically. Discovery retries every five seconds; output pauses while no peer is found. An explicit IP overrides discovery. On Windows, these default values use `127.0.0.1`.
+
 The client opens a desktop window by default. `--overlay` presents the same interface as a SteamVR dashboard overlay on Windows and Linux; SteamVR must be running. Dismissing the dashboard hides the interface. The overlay close control and SteamVR shutdown exit the client.
 
 Linux GUI builds include GLFW Wayland and X11 backends. `sh scripts/run-linux.sh` starts the server and overlay client together, uses X11 for the hidden OpenGL context, and stops the server when the client exits or the job is interrupted.

@@ -75,7 +75,10 @@ namespace sranipatch
       const auto value = trim(text.substr(separator + 1));
       if (key == "osc_host")
       {
-        checked_text(key, parsed.osc_host, value);
+        if (value.empty() || value == "\"\"" || value == "null")
+          set_text(parsed.osc_host, "");
+        else
+          checked_text(key, parsed.osc_host, value);
       }
       else if (key == "osc_address")
       {

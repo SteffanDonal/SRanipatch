@@ -1,4 +1,6 @@
 #pragma once
+#include "sranipatch/protocol.hpp"
+
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -18,6 +20,8 @@ namespace sranipatch
     OscSender(const OscSender&) = delete;
     OscSender& operator=(const OscSender&) = delete;
     bool send(std::span<const float> values);
+    void refresh();
+    const OscDestination& destination() const;
 
   private:
     struct Impl;

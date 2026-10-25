@@ -15,6 +15,8 @@
 #include <windows.h>
 #include <ws2tcpip.h>
 #else
+#include "../src/steam_link.hpp"
+
 #include <arpa/inet.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -98,8 +100,16 @@ namespace
       "Receiver bind failed");
     SocketLength length = sizeof(address);
     require(getsockname(socket, reinterpret_cast<sockaddr*>(&address), &length) == 0, "getsockname failed");
+#ifdef _WIN32
+    const std::array hosts { "127.0.0.1", "" };
+#else
+    const std::array hosts { "127.0.0.1" };
+#endif
+    for (const auto* host : hosts)
     {
-      sranipatch::OscSender sender("127.0.0.1", ntohs(address.sin_port), "/test");
+      sranipatch::OscSender sender(host, ntohs(address.sin_port), "/test");
+      require(std::string_view(sender.destination().host.data()) == "127.0.0.1" && sender.destination().port == ntohs(address.sin_port) && sender.destination().ready,
+        "Sender did not report its resolved numeric destination");
       const std::array<float, 1> values { 0.25F };
       require(sender.send(values), "OSC UDP send failed");
       std::array<char, 256> buffer {};
@@ -175,8 +185,79 @@ namespace
       output << "unknown=value\n";
     }
     must_throw([&] { sranipatch::load_osc_config(path, config); });
+    for (const auto* value : { "", "\"\"", "null" })
+    {
+      {
+        std::ofstream output(path);
+        output << "osc_host = " << value << '\n';
+      }
+      sranipatch::set_text(config.osc_host, "192.0.2.4");
+      require(sranipatch::load_osc_config(path, config) && config.osc_host[0] == '\0',
+        "Default OSC host value did not clear the explicit override");
+    }
+    {
+      std::ofstream output(path);
+      output << "osc_port=9337\n";
+    }
+    sranipatch::Config defaults;
+    require(sranipatch::load_osc_config(path, defaults) && defaults.osc_host[0] == '\0',
+      "Omitted OSC host did not retain automatic/default mode");
   }
+#ifndef _WIN32
+  void steam_link_discovery()
+  {
+    const auto proc = std::filesystem::temp_directory_path() / test_name();
 
+    struct Cleanup
+    {
+      std::filesystem::path path;
+
+      ~Cleanup()
+      {
+        std::error_code error;
+        std::filesystem::remove_all(path, error);
+      }
+    } cleanup { proc };
+
+    require(sranipatch::steam_link_peer(proc).empty(), "Missing proc directory should have no peer");
+    std::filesystem::create_directories(proc / "123" / "fd");
+    std::filesystem::create_directories(proc / "456" / "fd");
+    std::filesystem::create_directories(proc / "net");
+    std::filesystem::create_symlink("/bin/vrlink", proc / "123" / "exe");
+    std::filesystem::create_symlink("socket:[333]", proc / "123" / "fd" / "4");
+    std::filesystem::create_symlink("/bin/other", proc / "456" / "exe");
+    std::filesystem::create_symlink("socket:[999]", proc / "456" / "fd" / "4");
+    const auto write_table = [&](const char* name, const std::string& rows) {
+      std::ofstream table(proc / "net" / name);
+      table << "sl local_address rem_address st tx_queue tr retrnsmt uid timeout inode\n"
+            << rows;
+    };
+    const auto row = [](const std::string& ip, const std::string& state, const std::string& inode) {
+      return "0: 00000000:1234 " + ip + ":28A0 " + state + " 0:0 0:0 0 1000 0 " + inode + "\n";
+    };
+    const auto ignored = std::string("malformed\n") + row("1A4E230A", "01", "999") + row("1A4E230A", "07", "333") + row("0100007F", "01", "333") + row("00000000", "01", "333") + row("XXXXXXXX", "01", "333");
+    write_table("udp", ignored);
+    require(sranipatch::steam_link_peer(proc).empty(), "Unrelated, unconnected or invalid peer accepted");
+    write_table("udp", ignored + row("1A4E230A", "01", "333"));
+    require(sranipatch::steam_link_peer(proc) == "10.35.78.26", "IPv4 peer decoding failed");
+    write_table("udp", row("054E230A", "01", "333"));
+    require(sranipatch::steam_link_peer(proc) == "10.35.78.5", "Changed peer was not discovered");
+    write_table("udp", "");
+    write_table("udp6", row("0000000000000000FFFF00001A4E230A", "01", "333"));
+    require(sranipatch::steam_link_peer(proc) == "10.35.78.26", "IPv4-mapped peer decoding failed");
+    write_table("udp6", row("B80D0120000000000000000001000000", "01", "333"));
+    require(sranipatch::steam_link_peer(proc) == "2001:db8::1", "IPv6 peer decoding failed");
+    write_table("udp6", row("00000000000000000000000001000000", "01", "333") + row("00000000000000000000000000000000", "01", "333") + row("0000000000000000FFFF00000100007F", "01", "333"));
+    require(sranipatch::steam_link_peer(proc).empty(), "IPv6 loopback or unspecified peer accepted");
+    write_table("udp", row("1A4E230A", "01", "333"));
+    std::filesystem::remove(proc / "123" / "fd" / "4");
+    require(sranipatch::steam_link_peer(proc).empty(), "Closed Steam Link socket retained a stale peer");
+    sranipatch::OscSender waiting("", 9337, "/test");
+    require(waiting.send({}), "Waiting for Steam Link should not count as a send failure");
+    require(!waiting.destination().ready && !waiting.destination().host[0] && waiting.destination().port == 9337,
+      "Unresolved automatic destination must be reported as waiting");
+  }
+#endif
   void ipc_roundtrip()
   {
     const TestChannel channel;
@@ -281,6 +362,9 @@ int main()
     udp_delivery();
     frames();
     configuration();
+#ifndef _WIN32
+    steam_link_discovery();
+#endif
     tracker_commands();
     ipc_roundtrip();
     std::cout << "All checks passed\n";

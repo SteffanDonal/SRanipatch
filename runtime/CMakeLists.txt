@@ -93,6 +93,8 @@ target_include_directories(sranipatch_core PUBLIC include)
 target_link_libraries(sranipatch_core PUBLIC Threads::Threads)
 if(WIN32)
     target_link_libraries(sranipatch_core PRIVATE ws2_32)
+else()
+    target_sources(sranipatch_core PRIVATE src/steam_link.cpp)
 endif()
 sranipatch_target(sranipatch_core)
 
@@ -274,6 +276,24 @@ if(BUILD_TESTING)
     target_link_libraries(sranipatch-tests PRIVATE sranipatch_core)
     sranipatch_target(sranipatch-tests)
     add_test(NAME core COMMAND sranipatch-tests)
+    if(NOT WIN32)
+        add_executable(
+            sranipatch-osc-discovery-tests
+            tests/osc_discovery_tests.cpp
+            src/osc.cpp
+        )
+        target_include_directories(
+            sranipatch-osc-discovery-tests
+            PRIVATE include
+        )
+        target_link_libraries(
+            sranipatch-osc-discovery-tests
+            PRIVATE Threads::Threads
+        )
+        sranipatch_target(sranipatch-osc-discovery-tests)
+        add_test(NAME osc-discovery COMMAND sranipatch-osc-discovery-tests)
+        set_tests_properties(osc-discovery PROPERTIES TIMEOUT 30)
+    endif()
     if(SRANIPATCH_BUILD_SERVER)
         add_executable(sranipatch-inference-tests tests/inference_tests.cpp)
         target_link_libraries(

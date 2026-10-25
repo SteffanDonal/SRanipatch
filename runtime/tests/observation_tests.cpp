@@ -161,6 +161,40 @@ namespace
     sranipatch::Observation observation(channel.name, [&] { return now++; });
     require(observation.update().available, "Heartbeat newer than poll start must not disconnect server");
   }
+
+  void osc_destination_updates_without_frames()
+  {
+    const Channel channel;
+    sranipatch::SharedMemory server(channel.name, sranipatch::SharedMemory::Role::server);
+    std::uint64_t now = 1'000'000'000;
+    sranipatch::Observation observation(channel.name, [&] { return now; });
+    sranipatch::Status status;
+    status.session_id = 1;
+    status.heartbeat_ns = now;
+    sranipatch::set_text(status.config.osc_host, "192.0.2.1");
+    sranipatch::set_text(status.osc_destination.host, "10.35.78.26");
+    status.osc_destination.port = 9337;
+    status.osc_destination.ready = 1;
+    require(server.publish(status), "Cannot publish resolved destination");
+    const auto& connected = observation.update();
+    require(connected.available && connected.status.osc_destination.ready && std::string_view(connected.status.osc_destination.host.data()) == "10.35.78.26" && connected.status.osc_destination.port == 9337,
+      "Client must read runtime destination from server status independently of configured host");
+    now += 100'000'000;
+    status.heartbeat_ns = now;
+    status.osc_destination.ready = 0;
+    require(server.publish(status), "Cannot publish disconnected destination");
+    const auto& waiting = observation.update();
+    require(waiting.available && !waiting.status.osc_destination.ready && std::string_view(waiting.status.osc_destination.host.data()) == "10.35.78.26",
+      "Client must retain the server's last destination while waiting without camera frames");
+    now += 100'000'000;
+    status.session_id = 2;
+    status.heartbeat_ns = now;
+    status.osc_destination = {};
+    require(server.publish(status), "Cannot publish restarted server");
+    const auto& restarted = observation.update();
+    require(restarted.session_changed && !restarted.status.osc_destination.host[0],
+      "Last destination must not leak between server sessions");
+  }
 }  // namespace
 
 // Exceptions from the body are caught below; clang-tidy misidentifies MSVC exception inheritance.
@@ -173,6 +207,7 @@ int main()
     session_replacement();
     reconnect_and_fault();
     heartbeat_during_observation();
+    osc_destination_updates_without_frames();
     std::cout << "Client observation passed\n";
     return 0;
   }

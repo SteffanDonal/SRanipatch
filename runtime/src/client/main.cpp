@@ -247,14 +247,22 @@ namespace
               ImGui::TableNextColumn();
               ImGui::Text("OSC");
               ImGui::TableNextColumn();
-              if (status.osc_failures > 0)
-                ImGui::TextWrapped("%s:%u  Errors: %llu\n%s", status.config.osc_host.data(),
-                  status.config.osc_port,
-                  static_cast<unsigned long long>(status.osc_failures),
-                  status.config.osc_address.data());
+              const auto& destination = status.osc_destination;
+              if (destination.host[0])
+              {
+                const bool ipv6 =
+                  std::string_view(destination.host.data()).find(':') != std::string_view::npos;
+                ImGui::TextWrapped("%s%s%s:%u%s", ipv6 ? "[" : "", destination.host.data(),
+                  ipv6 ? "]" : "", destination.port,
+                  destination.ready ? "" : " (last)");
+              }
               else
-                ImGui::TextWrapped("%s:%u\n%s", status.config.osc_host.data(),
-                  status.config.osc_port, status.config.osc_address.data());
+              {
+                ImGui::TextUnformatted("Waiting for Steam Link");
+              }
+              if (status.osc_failures > 0)
+                ImGui::Text("Errors: %llu", static_cast<unsigned long long>(status.osc_failures));
+              ImGui::TextWrapped("%s", status.config.osc_address.data());
             }
 
             ImGui::EndTable();

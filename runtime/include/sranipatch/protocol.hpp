@@ -10,7 +10,7 @@
 namespace sranipatch
 {
   inline constexpr std::uint32_t protocol_magic = 0x53525031;
-  inline constexpr std::uint32_t protocol_version = 7;
+  inline constexpr std::uint32_t protocol_version = 8;
   inline constexpr std::size_t max_parameters = 128;
   inline constexpr std::uint32_t capture_width = 400;
   inline constexpr std::uint32_t capture_height = 400;
@@ -58,6 +58,13 @@ namespace sranipatch
     float scale { 1.0F / 255.0F };
   };
 
+  struct OscDestination
+  {
+    std::array<char, 64> host {};
+    std::uint32_t port {};
+    std::uint32_t ready {};
+  };
+
   struct Status
   {
     std::uint64_t heartbeat_ns {};
@@ -75,6 +82,7 @@ namespace sranipatch
     Config config {};
     std::array<Parameter, max_parameters> parameters {};
     std::array<char, 256> error {};
+    OscDestination osc_destination {};
   };
 
   struct Preview
@@ -98,8 +106,9 @@ namespace sranipatch
   static_assert(std::is_standard_layout_v<SharedBlock>);
   static_assert(sizeof(Parameter) == 52);
   static_assert(sizeof(Config) == 464);
-  static_assert(sizeof(Status) == 7448);
-  static_assert(sizeof(SharedBlock) == 167480);
+  static_assert(sizeof(OscDestination) == 72);
+  static_assert(sizeof(Status) == 7520);
+  static_assert(sizeof(SharedBlock) == 167552);
   static_assert(offsetof(SharedBlock, status) == 16);
-  static_assert(offsetof(SharedBlock, preview) == 7464);
+  static_assert(offsetof(SharedBlock, preview) == 7536);
 }  // namespace sranipatch
