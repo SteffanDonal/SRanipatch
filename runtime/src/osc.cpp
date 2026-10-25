@@ -94,7 +94,7 @@ namespace sranipatch
       const auto now = std::chrono::steady_clock::now();
       if (!automatic || now < next_discovery)
         return;
-      next_discovery = now + std::chrono::seconds(5);
+      next_discovery = now + std::chrono::seconds(2);
       const auto wanted = steam_link_peer();
       if (wanted == peer && socket >= 0)
         return;
@@ -206,6 +206,15 @@ namespace sranipatch
   const OscDestination& OscSender::destination() const
   {
     return impl_->destination;
+  }
+
+  bool OscSender::waiting_for_peer() const
+  {
+#ifdef _WIN32
+    return false;
+#else
+    return impl_->automatic && !impl_->destination.ready;
+#endif
   }
 
   bool OscSender::send(std::span<const float> values)

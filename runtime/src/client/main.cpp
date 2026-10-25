@@ -36,6 +36,8 @@ namespace
         return "Starting";
       case sranipatch::ServerState::waiting_for_camera:
         return "Waiting for camera";
+      case sranipatch::ServerState::waiting_for_steam_link:
+        return "Waiting for Steam Link";
       case sranipatch::ServerState::running:
         return "Running";
       case sranipatch::ServerState::stopped:

@@ -21,6 +21,7 @@ namespace sranipatch
     OscSender& operator=(const OscSender&) = delete;
     bool send(std::span<const float> values);
     void refresh();
+    bool waiting_for_peer() const;
     const OscDestination& destination() const;
 
   private:

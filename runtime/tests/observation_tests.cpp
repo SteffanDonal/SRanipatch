@@ -71,6 +71,51 @@ namespace
     require(!resumed.frame.luma.empty(), "Stale camera image must remain visible");
   }
 
+  void steam_link_idle_clears_observations_without_resurrecting_preview()
+  {
+    const Channel channel;
+    sranipatch::SharedMemory server(channel.name, sranipatch::SharedMemory::Role::server);
+    std::uint64_t now = 1'000'000'000;
+    sranipatch::Observation observation(channel.name, [&] { return now; });
+    sranipatch::Status status;
+    status.session_id = 1;
+    status.state = sranipatch::ServerState::running;
+    status.heartbeat_ns = now;
+    status.frames_inferred = 1;
+    status.parameter_count = 1;
+    status.parameters[0].value = 0.75F;
+    sranipatch::set_text(status.osc_destination.host, "127.0.0.1");
+    status.osc_destination.ready = 1;
+    sranipatch::Frame frame;
+    frame.width = sranipatch::capture_width;
+    frame.height = sranipatch::capture_height;
+    frame.sequence = 1;
+    frame.luma.assign(static_cast<std::size_t>(frame.width) * frame.height, 123);
+    require(server.publish(status) && server.publish_frame(frame), "Cannot publish active tracking");
+    require(observation.update().tracking_fresh, "Active tracking must be fresh");
+    now += 10'000'000;
+    status.heartbeat_ns = now;
+    status.state = sranipatch::ServerState::waiting_for_steam_link;
+    status.parameter_count = 0;
+    status.parameters = {};
+    status.osc_destination.ready = 0;
+    require(server.publish(status), "Cannot publish Steam Link idle state");
+    const auto& idle = observation.update();
+    require(idle.available && !idle.camera_fresh && !idle.tracking_fresh && idle.frame.luma.empty() && idle.status.parameter_count == 0 && idle.status.osc_destination.host[0] && !idle.status.osc_destination.ready,
+      "Idle must immediately clear tracking and camera while retaining last destination");
+    now += 10'000'000;
+    status.heartbeat_ns = now;
+    status.state = sranipatch::ServerState::waiting_for_camera;
+    require(server.publish(status), "Cannot publish session reconnect");
+    const auto& waiting = observation.update();
+    require(!waiting.camera_fresh && !waiting.tracking_fresh && waiting.frame.luma.empty(),
+      "Reconnect must not resurrect the previous session preview or tracking");
+    sranipatch::Observation newcomer(channel.name, [&] { return now; });
+    const auto& new_view = newcomer.update();
+    require(new_view.frame.luma.empty() && !new_view.camera_fresh && !new_view.tracking_fresh,
+      "New client received previous active tracking or preview");
+  }
+
   void session_replacement()
   {
     const Channel channel;
@@ -204,6 +249,7 @@ int main()
   try
   {
     independent_freshness();
+    steam_link_idle_clears_observations_without_resurrecting_preview();
     session_replacement();
     reconnect_and_fault();
     heartbeat_during_observation();

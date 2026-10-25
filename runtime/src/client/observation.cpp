@@ -51,7 +51,7 @@ namespace sranipatch
             snapshot_.frame = {};
             camera_at_ = tracking_at_ = 0;
           }
-          if (status.frames_inferred && status.frames_inferred != snapshot_.status.frames_inferred)
+          if (status.parameter_count && status.frames_inferred && status.frames_inferred != snapshot_.status.frames_inferred)
             tracking_at_ = now;
           snapshot_.status = status;
         }
@@ -62,6 +62,12 @@ namespace sranipatch
         }
         now = clock_();
         const auto& current = snapshot_.status;
+        if (current.state == ServerState::waiting_for_steam_link)
+        {
+          snapshot_.frame = {};
+          snapshot_.frame_changed = false;
+          camera_at_ = tracking_at_ = 0;
+        }
         snapshot_.available = recent(current.heartbeat_ns, now, 2'000'000'000) && current.state != ServerState::stopped && current.state != ServerState::fault;
         if (snapshot_.available)
           snapshot_.message.clear();

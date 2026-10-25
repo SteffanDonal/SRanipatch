@@ -10,7 +10,7 @@
 namespace sranipatch
 {
   inline constexpr std::uint32_t protocol_magic = 0x53525031;
-  inline constexpr std::uint32_t protocol_version = 8;
+  inline constexpr std::uint32_t protocol_version = 9;
   inline constexpr std::size_t max_parameters = 128;
   inline constexpr std::uint32_t capture_width = 400;
   inline constexpr std::uint32_t capture_height = 400;
@@ -38,7 +38,8 @@ namespace sranipatch
     waiting_for_camera,
     running,
     stopped,
-    fault
+    fault,
+    waiting_for_steam_link
   };
 
   struct Parameter

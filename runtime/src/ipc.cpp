@@ -220,6 +220,11 @@ namespace sranipatch
     Impl::Guard guard { *impl_ };
     impl_->validate();
     impl_->block->status = status;
+    if (status.state == ServerState::waiting_for_steam_link)
+    {
+      impl_->block->preview.sequence = 0;
+      impl_->block->preview.timestamp_ns = 0;
+    }
     return true;
   }
 
@@ -245,7 +250,12 @@ namespace sranipatch
     Impl::Guard guard { *impl_ };
     impl_->validate();
     const auto& preview = impl_->block->preview;
-    if (!preview.sequence || preview.sequence == frame.sequence)
+    if (!preview.sequence)
+    {
+      frame = {};
+      return false;
+    }
+    if (preview.sequence == frame.sequence)
       return false;
     frame.width = capture_width;
     frame.height = capture_height;

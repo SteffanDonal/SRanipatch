@@ -1,15 +1,13 @@
-#include "sranipatch/capture.hpp"
 #include "sranipatch/config.hpp"
 #include "sranipatch/inference.hpp"
 #include "sranipatch/ipc.hpp"
 #include "sranipatch/live_osc_config.hpp"
 #include "sranipatch/osc.hpp"
+#include "tracking.hpp"
 
-#include <atomic>
 #include <charconv>
 #include <csignal>
 #include <iostream>
-#include <mutex>
 #include <stdexcept>
 #include <thread>
 
@@ -126,63 +124,11 @@ namespace
     ipc.publish(status);
     try
     {
-      auto inference = sranipatch::open_lip_mnn(options.config, options.precision);
-      std::cout << "MNN CPU precision: " << precision_name(options.precision) << '\n';
-      sranipatch::LatestFrame latest;
-      std::atomic<std::uint64_t> captured {};
-      std::atomic<bool> capture_connected {};
-      std::atomic<bool> capture_fault {};
-      std::mutex error_mutex;
-      std::string capture_error;
-      std::jthread capture([&](const std::stop_token& stop) {
-        try
-        {
-          while (!stop.stop_requested())
-          {
-            try
-            {
-              auto camera = sranipatch::open_capture();
-              capture_connected.store(true, std::memory_order_release);
-              std::cout << "Camera connected\n";
-              sranipatch::Frame frame;
-              auto last_frame_time = sranipatch::monotonic_ns();
-              while (!stop.stop_requested())
-              {
-                if (camera->read(frame, stop))
-                {
-                  last_frame_time = sranipatch::monotonic_ns();
-                  captured.fetch_add(1, std::memory_order_relaxed);
-                  latest.push(frame);
-                }
-                if (sranipatch::monotonic_ns() - last_frame_time > 5'000'000'000ULL)
-                  throw sranipatch::CaptureUnavailable(
-                    "Camera has not delivered a valid frame for five seconds"
-                  );
-              }
-            }
-            catch (const sranipatch::CaptureUnavailable& error)
-            {
-              capture_connected.store(false, std::memory_order_release);
-              std::cerr << "Camera unavailable: " << error.what() << "; waiting for USB device\n";
-              sranipatch::wait_for_capture_device(stop, error.new_arrival_required());
-              if (!stop.stop_requested())
-                std::cout << "VIVE Facial Tracker detected; reconnecting\n";
-            }
-          }
-        }
-        catch (const std::exception& error)
-        {
-          {
-            std::lock_guard lock(error_mutex);
-            capture_error = error.what();
-          }
-          capture_fault.store(true, std::memory_order_release);
-        }
-      });
+      sranipatch::Tracking tracking(options.config, options.precision);
       std::cout << "Server running; IPC=" << options.ipc << '\n';
       sranipatch::Frame frame;
       std::array<float, sranipatch::max_parameters> values {};
-      std::uint64_t last_sequence {}, previous_captured {}, previous_inferred {};
+      std::uint64_t previous_captured {}, previous_inferred {};
       auto rate_time = sranipatch::monotonic_ns();
       std::uint64_t publish_time {};
       std::uint64_t preview_time {};
@@ -203,28 +149,15 @@ namespace
         }
         auto& osc = live_config.sender();
         osc.refresh();
-        if (capture_fault.load(std::memory_order_acquire))
+        const bool active = !osc.waiting_for_peer();
+        if (tracking.update(active, status, frame))
         {
-          std::lock_guard lock(error_mutex);
-          throw std::runtime_error(capture_error);
-        }
-        if (latest.pop(frame, capture.get_stop_token()))
-        {
-          if (frame.sequence > last_sequence + 1)
-            status.frames_skipped += frame.sequence - last_sequence - 1;
-          last_sequence = frame.sequence;
           const auto begin = sranipatch::monotonic_ns();
           if (begin - preview_time >= 33'000'000ULL)
           {
             if (ipc.publish_frame(frame))
               preview_time = begin;
           }
-          const auto inference_begin = sranipatch::monotonic_ns();
-          status.parameter_count = inference->run(frame, status.parameters);
-          const auto end = sranipatch::monotonic_ns();
-          ++status.frames_inferred;
-          status.inference_ms = static_cast<float>(end - inference_begin) / 1.0e6F;
-          status.frame_age_ms = static_cast<float>(end - frame.timestamp_ns) / 1.0e6F;
           for (std::size_t i = 0; i < status.parameter_count; ++i)
             values[i] = status.parameters[i].value;
           if (!osc.send(std::span(values.data(), status.parameter_count)))
@@ -232,7 +165,12 @@ namespace
         }
         const auto now = sranipatch::monotonic_ns();
         status.osc_destination = osc.destination();
-        status.frames_captured = captured.load(std::memory_order_relaxed);
+        if (!active)
+        {
+          previous_captured = status.frames_captured;
+          previous_inferred = status.frames_inferred;
+          rate_time = now;
+        }
         if (now - rate_time >= 1'000'000'000ULL)
         {
           const float seconds = static_cast<float>(now - rate_time) / 1.0e9F;
@@ -246,19 +184,15 @@ namespace
                     << " fps (" << status.inference_ms << " ms), " << status.frames_captured
                     << " frames\n";
         }
-        if (!capture_connected.load(std::memory_order_acquire))
-          status.state = sranipatch::ServerState::waiting_for_camera;
-        else
-          status.state = sranipatch::ServerState::running;
         if (now - publish_time >= 33'000'000ULL)
         {
           status.heartbeat_ns = now;
           if (ipc.publish(status))
             publish_time = now;
         }
+        if (!active)
+          std::this_thread::sleep_for(std::chrono::milliseconds(50));
       }
-      capture.request_stop();
-      capture.join();
       status.state = sranipatch::ServerState::stopped;
     }
     catch (const std::exception& error)

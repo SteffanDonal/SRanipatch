@@ -133,7 +133,11 @@ if(SRANIPATCH_BUILD_SERVER)
         PRIVATE MNN opencv_core
     )
     sranipatch_target(sranipatch_inference)
-    add_executable(sranipatch-server src/server/main.cpp)
+    add_executable(
+        sranipatch-server
+        src/server/main.cpp
+        src/server/tracking.cpp
+    )
     target_link_libraries(
         sranipatch-server
         PRIVATE sranipatch_capture sranipatch_inference MNN
@@ -284,6 +288,16 @@ if(BUILD_TESTING)
     )
     sranipatch_target(sranipatch-config-reload-tests)
     add_test(NAME config-reload COMMAND sranipatch-config-reload-tests)
+    add_executable(
+        sranipatch-tracking-tests
+        tests/tracking_tests.cpp
+        src/server/tracking.cpp
+    )
+    target_include_directories(sranipatch-tracking-tests PRIVATE src/server)
+    target_link_libraries(sranipatch-tracking-tests PRIVATE sranipatch_core)
+    sranipatch_target(sranipatch-tracking-tests)
+    add_test(NAME tracking-lifecycle COMMAND sranipatch-tracking-tests)
+    set_tests_properties(tracking-lifecycle PROPERTIES TIMEOUT 15)
     if(NOT WIN32)
         add_executable(
             sranipatch-osc-discovery-tests

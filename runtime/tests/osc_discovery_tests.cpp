@@ -19,7 +19,7 @@ namespace
 
   void next_refresh(sranipatch::OscSender& sender)
   {
-    std::this_thread::sleep_for(std::chrono::milliseconds(5100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(2100));
     sender.refresh();
   }
 }  // namespace
@@ -34,22 +34,23 @@ namespace sranipatch
   }
 }  // namespace sranipatch
 
+// NOLINTNEXTLINE(bugprone-exception-escape): Exceptions from the body are caught below.
 int main()
 {
   try
   {
     sranipatch::OscSender sender("", 9337, "/test");
-    require(!sender.destination().ready && !sender.destination().host[0],
+    require(sender.waiting_for_peer() && !sender.destination().ready && !sender.destination().host[0],
       "Initial state must be waiting");
     sender.refresh();
-    require(lookups == 1, "Discovery must respect the five-second interval");
+    require(lookups == 1, "Discovery must respect the two-second interval");
     discovered_peer = "127.0.0.1";
     next_refresh(sender);
-    require(sender.destination().ready && sender.destination().port == 9337 && std::string_view(sender.destination().host.data()) == discovered_peer,
+    require(!sender.waiting_for_peer() && sender.destination().ready && sender.destination().port == 9337 && std::string_view(sender.destination().host.data()) == discovered_peer,
       "Refresh without sending must resolve and report the destination");
     discovered_peer.clear();
     next_refresh(sender);
-    require(!sender.destination().ready && std::string_view(sender.destination().host.data()) == "127.0.0.1" && sender.send({}),
+    require(sender.waiting_for_peer() && !sender.destination().ready && std::string_view(sender.destination().host.data()) == "127.0.0.1" && sender.send({}),
       "Disconnection must retain the last address and pause output without a send failure");
     discovered_peer = "127.0.0.2";
     next_refresh(sender);
