@@ -142,12 +142,20 @@ if(SRANIPATCH_BUILD_SERVER)
         )
     endif()
     sranipatch_target(sranipatch-server)
-    install(TARGETS sranipatch-server RUNTIME DESTINATION bin COMPONENT Runtime)
-    install(
-        FILES ../assets/models/lip_model.mnn
-        DESTINATION share/sranipatch/models
-        COMPONENT Runtime
+    add_custom_target(
+        sranipatch-model
+        COMMAND
+            ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:sranipatch-server>/models"
+        COMMAND
+            ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/../assets/models/lip_model.mnn"
+            "$<TARGET_FILE_DIR:sranipatch-server>/models/lip_model.mnn"
+        VERBATIM
     )
+    add_dependencies(sranipatch-server sranipatch-model)
+    install(TARGETS sranipatch-server RUNTIME DESTINATION bin COMPONENT Runtime)
+    install(FILES ../assets/models/lip_model.mnn DESTINATION bin/models COMPONENT Runtime)
     install(
         FILES third_party/vivefacialtracker-LICENSE.txt
         DESTINATION share/licenses
