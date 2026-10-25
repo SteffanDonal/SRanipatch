@@ -40,11 +40,11 @@ namespace sranipatch
     }
   }  // namespace
 
-  void PerformancePlot::update(const Status& status, bool connected, std::uint64_t now)
+  void PerformancePlot::update(const ObservationSnapshot& observation, std::uint64_t now)
   {
-    if (connected && session_ != status.session_id)
+    const auto& status = observation.status;
+    if (observation.session_changed)
     {
-      session_ = status.session_id;
       started_at_ = now;
       capture_ = {};
       inference_ = {};
@@ -52,14 +52,14 @@ namespace sranipatch
     if (!started_at_)
       started_at_ = now;
     elapsed_ = static_cast<double>(now - started_at_) / 1e9;
-    const bool running = connected && status.state == ServerState::running;
-    const auto update_series = [&](Series& series, std::uint64_t counter, std::array<double, 3> values) {
-      if (running && counter != series.counter)
+    const auto update_series = [&](Series& series, std::uint64_t counter, std::array<double, 3> values,
+                                 bool fresh) {
+      if (fresh && counter != series.counter)
       {
         series.samples.push_back({ elapsed_, values });
         series.gap = false;
       }
-      else if (!series.gap && (!running || elapsed_ - series.samples.back().time > stale_seconds))
+      else if (!series.gap && (!fresh || elapsed_ - series.samples.back().time > stale_seconds))
       {
         constexpr auto missing = std::numeric_limits<double>::quiet_NaN();
         series.samples.push_back({ elapsed_, { missing, missing, missing } });
@@ -69,9 +69,10 @@ namespace sranipatch
       while (!series.samples.empty() && series.samples.front().time < elapsed_ - history_seconds)
         series.samples.pop_front();
     };
-    update_series(capture_, status.frames_captured, { status.capture_fps, 0, 0 });
+    update_series(capture_, status.frames_captured, { status.capture_fps, 0, 0 }, observation.camera_fresh);
     update_series(inference_, status.frames_inferred,
-      { status.inference_fps, status.inference_ms, status.frame_age_ms });
+      { status.inference_fps, status.inference_ms, status.frame_age_ms },
+      observation.tracking_fresh);
   }
 
   void PerformancePlot::draw(const Status& status) const

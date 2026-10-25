@@ -1,6 +1,6 @@
 #ifndef SRANIPATCH_PERFORMANCE_PLOT_HPP
 #define SRANIPATCH_PERFORMANCE_PLOT_HPP
-#include "sranipatch/protocol.hpp"
+#include "observation.hpp"
 
 #include <array>
 #include <deque>
@@ -10,7 +10,7 @@ namespace sranipatch
   class PerformancePlot
   {
   public:
-    void update(const Status& status, bool connected, std::uint64_t now);
+    void update(const ObservationSnapshot& observation, std::uint64_t now);
     void draw(const Status& status) const;
 
   private:
@@ -28,7 +28,7 @@ namespace sranipatch
     };
 
     Series capture_, inference_;
-    std::uint64_t session_ {}, started_at_ {};
+    std::uint64_t started_at_ {};
     double elapsed_ {};
   };
 }  // namespace sranipatch

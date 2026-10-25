@@ -165,9 +165,14 @@ if(SRANIPATCH_BUILD_CLIENT)
         PRIVATE sranipatch_cgltf
     )
     sranipatch_target(sranipatch_head_model)
+    add_library(sranipatch_observation STATIC src/client/observation.cpp)
+    target_include_directories(sranipatch_observation PUBLIC src/client)
+    target_link_libraries(sranipatch_observation PUBLIC sranipatch_core)
+    sranipatch_target(sranipatch_observation)
     add_executable(
         sranipatch-client
         src/client/main.cpp
+        src/client/desktop.cpp
         src/client/head_preview.cpp
         src/client/style.cpp
         src/client/parameter_grid.cpp
@@ -180,6 +185,7 @@ if(SRANIPATCH_BUILD_CLIENT)
             sranipatch_implot
             sranipatch_head_model
             sranipatch_glad
+            sranipatch_observation
     )
     sranipatch_target(sranipatch-client)
     add_custom_command(
@@ -209,6 +215,13 @@ endif()
 
 if(BUILD_TESTING)
     if(SRANIPATCH_BUILD_CLIENT)
+        add_executable(sranipatch-observation-tests tests/observation_tests.cpp)
+        target_link_libraries(
+            sranipatch-observation-tests
+            PRIVATE sranipatch_observation
+        )
+        sranipatch_target(sranipatch-observation-tests)
+        add_test(NAME client-observation COMMAND sranipatch-observation-tests)
         add_executable(sranipatch-head-tests tests/head_tests.cpp)
         target_link_libraries(
             sranipatch-head-tests

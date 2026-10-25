@@ -1,30 +1,19 @@
+#include "desktop.hpp"
 #include "head_preview.hpp"
+#include "observation.hpp"
 #include "parameter_grid.hpp"
 #include "performance_plot.hpp"
-#include "sranipatch/ipc.hpp"
-#include "style.hpp"
 
 #include <glad/gl.h>
-#include <GLFW/glfw3.h>
 #include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
-#include <implot.h>
 
 #include <algorithm>
 #include <array>
-#include <cfloat>
 #include <csignal>
-#include <cstdio>
-#include <exception>
 #include <filesystem>
-#include <fstream>
-#include <functional>
 #include <iostream>
-#include <iterator>
 #include <memory>
 #include <stdexcept>
-#include <vector>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -54,11 +43,6 @@ namespace
         return "Fault";
     }
     return "Unknown";
-  }
-
-  void glfw_error(int, const char* message)
-  {
-    std::cerr << "GLFW: " << message << '\n';
   }
 
   std::filesystem::path default_asset_path(const char* filename)
@@ -126,106 +110,73 @@ namespace
     ImGui::PopFont();
   }
 
-  struct WindowRenderer
+  class CameraTexture
   {
-    std::function<void()> render;
-    std::exception_ptr error;
-    bool rendering {};
-
-    void draw(GLFWwindow* window, bool refresh)
+  public:
+    CameraTexture()
     {
-      if (rendering || error)
-        return;
-      int width {}, height {};
-      glfwGetFramebufferSize(window, &width, &height);
-      if (width <= 0 || height <= 0)
-        return;
-      rendering = true;
-      try
-      {
-        render();
-        glfwSwapBuffers(window);
-        if (refresh)
-          glFinish();
-      }
-      catch (...)
-      {
-        rendering = false;
-        throw;
-      }
-      rendering = false;
+      glGenTextures(1, &texture_);
+      glBindTexture(GL_TEXTURE_2D, texture_);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_RED);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_RED);
     }
+
+    ~CameraTexture()
+    {
+      glDeleteTextures(1, &texture_);
+    }
+
+    CameraTexture(const CameraTexture&) = delete;
+    CameraTexture& operator=(const CameraTexture&) = delete;
+
+    void upload(const sranipatch::Frame& frame)
+    {
+      glBindTexture(GL_TEXTURE_2D, texture_);
+      glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+      if (width_ != frame.width || height_ != frame.height)
+      {
+        width_ = frame.width;
+        height_ = frame.height;
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, static_cast<GLsizei>(width_), static_cast<GLsizei>(height_),
+          0, GL_RED, GL_UNSIGNED_BYTE, frame.luma.data());
+      }
+      else
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(width_),
+          static_cast<GLsizei>(height_), GL_RED, GL_UNSIGNED_BYTE, frame.luma.data());
+    }
+
+    GLuint id() const
+    {
+      return texture_;
+    }
+
+  private:
+    GLuint texture_ {};
+    std::uint32_t width_ {}, height_ {};
   };
+
+  void stale_overlay(const char* label)
+  {
+    const auto min = ImGui::GetItemRectMin();
+    const auto max = ImGui::GetItemRectMax();
+    auto* draw = ImGui::GetWindowDrawList();
+    const auto size = ImGui::CalcTextSize(label);
+    draw->PushClipRect(min, max, true);
+    draw->AddRectFilled(min, ImVec2(min.x + size.x + 12, min.y + size.y + 8), IM_COL32(20, 23, 28, 220), 3);
+    draw->AddText(ImVec2(min.x + 6, min.y + 4), IM_COL32(220, 220, 220, 255), label);
+    draw->PopClipRect();
+  }
 
   int run(const Options& options)
   {
-    const auto font_path = default_asset_path("Quicksand-Medium.ttf");
-    std::ifstream font_file(font_path, std::ios::binary);
-    std::vector<char> font_data(std::istreambuf_iterator<char> { font_file }, {});
-    if (font_file.bad() || font_data.empty())
-      throw std::runtime_error("Cannot read bundled font: " + font_path.string());
-    const auto& name = options.ipc;
-    glfwSetErrorCallback(glfw_error);
-    if (!glfwInit())
-      throw std::runtime_error("GLFW initialization failed");
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    GLFWwindow* window = glfwCreateWindow(900, 720, "SRanipatch", nullptr, nullptr);
-    if (!window)
-    {
-      glfwTerminate();
-      throw std::runtime_error("OpenGL 3.3 window creation failed");
-    }
-    glfwMakeContextCurrent(window);
-    if (!gladLoadGL(glfwGetProcAddress) || !GLAD_GL_VERSION_3_3)
-    {
-      glfwDestroyWindow(window);
-      glfwTerminate();
-      throw std::runtime_error("OpenGL 3.3 loader initialization failed");
-    }
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImPlot::CreateContext();
-    ImGui::GetIO().IniFilename = nullptr;
-    sranipatch::set_dark_pastel_style();
-    ImFontConfig font_config;
-    font_config.FontDataOwnedByAtlas = false;
-    std::snprintf(font_config.Name, sizeof(font_config.Name), "Quicksand Medium");
-    if (!ImGui::GetIO().Fonts->AddFontFromMemoryTTF(font_data.data(), static_cast<int>(font_data.size()),
-          18.0f, &font_config))
-    {
-      ImPlot::DestroyContext();
-      ImGui::DestroyContext();
-      glfwDestroyWindow(window);
-      glfwTerminate();
-      throw std::runtime_error("Cannot load bundled Quicksand font");
-    }
-    if (!ImGui_ImplGlfw_InitForOpenGL(window, true) || !ImGui_ImplOpenGL3_Init("#version 330"))
-    {
-      ImPlot::DestroyContext();
-      ImGui::DestroyContext();
-      glfwDestroyWindow(window);
-      glfwTerminate();
-      throw std::runtime_error("GUI renderer initialization failed");
-    }
-    std::unique_ptr<sranipatch::SharedMemory> ipc;
-    sranipatch::Status status;
-    std::string connection_message { "Waiting for server" };
-    std::uint64_t retry_at {}, session {};
+    sranipatch::Desktop desktop(default_asset_path("Quicksand-Medium.ttf"));
+    sranipatch::Observation observation(options.ipc);
     sranipatch::PerformancePlot performance;
-    sranipatch::Frame preview;
-    GLuint preview_texture {};
-    glGenTextures(1, &preview_texture);
-    glBindTexture(GL_TEXTURE_2D, preview_texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_RED);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_RED);
-    std::uint32_t texture_width {}, texture_height {};
+    CameraTexture camera_texture;
     int camera_view { 1 };
 
     std::unique_ptr<sranipatch::HeadPreview> head;
@@ -239,240 +190,151 @@ namespace
       head_error = error.what();
     }
 
-    WindowRenderer renderer;
-    renderer.render = [&] {
-      const auto now = sranipatch::monotonic_ns();
-      if (!ipc && now >= retry_at)
-      {
-        retry_at = now + 1'000'000'000ULL;
-        try
+    desktop.run(
+      [&] {
+        const auto& observed = observation.update();
+        const auto& status = observed.status;
+        const auto& preview = observed.frame;
+        if (observed.frame_changed)
+          camera_texture.upload(preview);
+        performance.update(observed, sranipatch::monotonic_ns());
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+        ImGui::Begin("Server", nullptr,
+          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+        if (ImGui::BeginTable("dashboard", 2, ImGuiTableFlags_Resizable))
         {
-          ipc =
-            std::make_unique<sranipatch::SharedMemory>(name, sranipatch::SharedMemory::Role::client);
-        }
-        catch (const std::exception& error)
-        {
-          connection_message = error.what();
-        }
-      }
-      bool fresh = false;
-      if (ipc)
-      {
-        try
-        {
-          ipc->read(status);
-          const auto observed_at = sranipatch::monotonic_ns();
-          fresh = status.heartbeat_ns && observed_at >= status.heartbeat_ns && observed_at - status.heartbeat_ns < 2'000'000'000ULL;
-          if (session != status.session_id)
-          {
-            session = status.session_id;
-            preview = {};
-          }
-          if (ipc->read_frame(preview))
-          {
-            glBindTexture(GL_TEXTURE_2D, preview_texture);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            if (texture_width != preview.width || texture_height != preview.height)
-            {
-              texture_width = preview.width;
-              texture_height = preview.height;
-              glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, static_cast<GLsizei>(preview.width),
-                static_cast<GLsizei>(preview.height), 0, GL_RED, GL_UNSIGNED_BYTE,
-                preview.luma.data());
-            }
-            else
-              glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(preview.width),
-                static_cast<GLsizei>(preview.height), GL_RED, GL_UNSIGNED_BYTE,
-                preview.luma.data());
-          }
-          // Windows mappings disappear when all handles close; reopen after a server exits.
-          if (!fresh || status.state == sranipatch::ServerState::fault || status.state == sranipatch::ServerState::stopped)
-          {
-            connection_message = "Server is offline or its heartbeat is stale";
-            ipc.reset();
-          }
-        }
-        catch (const std::exception& error)
-        {
-          connection_message = error.what();
-          ipc.reset();
-        }
-      }
-      performance.update(status, fresh && static_cast<bool>(ipc), now);
-      ImGui_ImplOpenGL3_NewFrame();
-      ImGui_ImplGlfw_NewFrame();
-      ImGui::NewFrame();
-      ImGui::SetNextWindowPos(ImVec2(0, 0));
-      ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
-      ImGui::Begin("Server", nullptr,
-        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-      if (ImGui::BeginTable("dashboard", 2, ImGuiTableFlags_Resizable))
-      {
-        ImGui::TableNextColumn();
-
-        if (ImGui::BeginTable("status", 2))
-        {
-          ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed);
-          ImGui::TableSetupColumn("control", ImGuiTableColumnFlags_WidthStretch);
-
           ImGui::TableNextColumn();
-          ImGui::Text("Status");
-          ImGui::TableNextColumn();
-          ImGui::TextWrapped("%s%s", state_name(status.state), fresh ? "" : " (offline)");
 
-          if (!ipc)
+          if (ImGui::BeginTable("status", 2))
           {
+            ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableSetupColumn("control", ImGuiTableColumnFlags_WidthStretch);
+
             ImGui::TableNextColumn();
+            ImGui::Text("Status");
             ImGui::TableNextColumn();
-            ImGui::TextWrapped("%s", connection_message.c_str());
-          }
-          else
-          {
-            if (status.error[0])
+            ImGui::TextWrapped("%s%s", state_name(status.state),
+              observed.available ? "" : " (offline)");
+
+            if (!observed.available)
             {
               ImGui::TableNextColumn();
               ImGui::TableNextColumn();
-              ImGui::TextWrapped("%s", status.error.data());
+              ImGui::TextWrapped("%s", observed.message.empty() ? "Waiting for server" : observed.message.c_str());
+            }
+            else
+            {
+              if (status.error[0])
+              {
+                ImGui::TableNextColumn();
+                ImGui::TableNextColumn();
+                ImGui::TextWrapped("%s", status.error.data());
+              }
+
+              ImGui::TableNextColumn();
+              ImGui::Text("Threads");
+              ImGui::TableNextColumn();
+              ImGui::Text("%u", status.config.threads);
+
+              ImGui::TableNextColumn();
+              ImGui::Text("OSC");
+              ImGui::TableNextColumn();
+              if (status.osc_failures > 0)
+                ImGui::TextWrapped("%s:%u  Errors: %llu\n%s", status.config.osc_host.data(),
+                  status.config.osc_port,
+                  static_cast<unsigned long long>(status.osc_failures),
+                  status.config.osc_address.data());
+              else
+                ImGui::TextWrapped("%s:%u\n%s", status.config.osc_host.data(),
+                  status.config.osc_port, status.config.osc_address.data());
             }
 
-            ImGui::TableNextColumn();
-            ImGui::Text("Threads");
-            ImGui::TableNextColumn();
-            ImGui::Text("%u", status.config.threads);
+            ImGui::EndTable();
+          }
 
-            ImGui::TableNextColumn();
-            ImGui::Text("OSC");
-            ImGui::TableNextColumn();
-            if (status.osc_failures > 0)
-              ImGui::TextWrapped("%s:%u  Errors: %llu\n%s", status.config.osc_host.data(),
-                status.config.osc_port,
-                static_cast<unsigned long long>(status.osc_failures),
-                status.config.osc_address.data());
-            else
-              ImGui::TextWrapped("%s:%u\n%s", status.config.osc_host.data(), status.config.osc_port,
-                status.config.osc_address.data());
+          PushStyleCompact();
+          performance.draw(status);
+          PopStyleCompact();
+
+          ImGui::TableNextColumn();
+          if (ImGui::BeginTabBar("preview"))
+          {
+            if (ImGui::BeginTabItem("Blendshapes"))
+            {
+              if (head)
+              {
+                const float side = std::clamp(ImGui::GetContentRegionAvail().x, 64.0F, 400.0F);
+                const auto count = observed.tracking_fresh
+                  ? std::min<std::size_t>(status.parameter_count,
+                      sranipatch::max_parameters)
+                  : 0;
+                try
+                {
+                  const int render_width = std::clamp(
+                    static_cast<int>(side * ImGui::GetIO().DisplayFramebufferScale.x), 64,
+                    1024
+                  );
+                  const auto texture = head->render(std::span(status.parameters.data(), count),
+                    render_width, render_width / 2);
+                  ImGui::Image(static_cast<ImTextureID>(texture), ImVec2(side, side * 0.5F),
+                    ImVec2(1, 1), ImVec2(0, 0));
+                  if (!observed.tracking_fresh)
+                    stale_overlay("Tracking stale");
+                }
+                catch (const std::exception& error)
+                {
+                  head_error = error.what();
+                  head.reset();
+                }
+              }
+              if (!head_error.empty())
+                ImGui::TextWrapped("Head preview: %s", head_error.c_str());
+              ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Camera"))
+            {
+              ImGui::Combo("View", &camera_view, "Both\0Left\0Right\0");
+              if (!preview.luma.empty())
+              {
+                const float side = std::min(400.0F, ImGui::GetContentRegionAvail().x);
+                const float left = camera_view == 2 ? 0.5F + 0.5F / 400.0F : 0.0F;
+                const float right = camera_view == 1 ? 0.5F - 0.5F / 400.0F : 1.0F;
+                const float height =
+                  side * static_cast<float>(preview.height) / static_cast<float>(preview.width);
+                const float tint = observed.camera_fresh ? 1.0F : 0.45F;
+                ImGui::ImageWithBg(static_cast<ImTextureID>(camera_texture.id()),
+                  ImVec2(side, height), ImVec2(left, 0), ImVec2(right, 1),
+                  ImVec4(0, 0, 0, 0), ImVec4(tint, tint, tint, 1));
+                if (!observed.camera_fresh)
+                  stale_overlay("Camera stale");
+              }
+              else
+                ImGui::TextUnformatted("Waiting for camera frames...");
+              ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
           }
 
           ImGui::EndTable();
         }
 
+        ImGui::SeparatorText(observed.tracking_fresh ? "Parameters" : "Parameters (stale)");
         PushStyleCompact();
-        performance.draw(status);
-        PopStyleCompact();
-
-        ImGui::TableNextColumn();
-        if (ImGui::BeginTabBar("preview"))
+        if (ImGui::BeginChild("parameters", ImGui::GetContentRegionAvail(), ImGuiChildFlags_Borders))
         {
-          if (ImGui::BeginTabItem("Blendshapes"))
-          {
-            if (head)
-            {
-              const float side = std::clamp(ImGui::GetContentRegionAvail().x, 64.0F, 400.0F);
-              const auto count =
-                fresh ? std::min<std::size_t>(status.parameter_count, sranipatch::max_parameters)
-                      : 0;
-              try
-              {
-                const int render_width = std::clamp(
-                  static_cast<int>(side * ImGui::GetIO().DisplayFramebufferScale.x), 64, 1024
-                );
-                const auto texture = head->render(std::span(status.parameters.data(), count),
-                  render_width, render_width / 2);
-                ImGui::Image(static_cast<ImTextureID>(texture), ImVec2(side, side * 0.5F),
-                  ImVec2(1, 1), ImVec2(0, 0));
-              }
-              catch (const std::exception& error)
-              {
-                head_error = error.what();
-                head.reset();
-              }
-            }
-            if (!head_error.empty())
-              ImGui::TextWrapped("Head preview: %s", head_error.c_str());
-            ImGui::EndTabItem();
-          }
-          if (ImGui::BeginTabItem("Camera"))
-          {
-            ImGui::Combo("View", &camera_view, "Both\0Left\0Right\0");
-            if (!preview.luma.empty())
-            {
-              const float side = std::min(400.0F, ImGui::GetContentRegionAvail().x);
-              const float left = camera_view == 2 ? 0.5F + 0.5F / 400.0F : 0.0F;
-              const float right = camera_view == 1 ? 0.5F - 0.5F / 400.0F : 1.0F;
-              const float height =
-                side * static_cast<float>(preview.height) / static_cast<float>(preview.width);
-              ImGui::Image(static_cast<ImTextureID>(preview_texture), ImVec2(side, height),
-                ImVec2(left, 0), ImVec2(right, 1));
-            }
-            else
-              ImGui::TextUnformatted("Waiting for camera frames...");
-            ImGui::EndTabItem();
-          }
-          ImGui::EndTabBar();
+          const auto count = std::min<std::size_t>(status.parameter_count, sranipatch::max_parameters);
+          ImGui::BeginDisabled(!observed.tracking_fresh);
+          sranipatch::draw_parameter_grid(std::span(status.parameters.data(), count));
+          ImGui::EndDisabled();
         }
+        PopStyleCompact();
+        ImGui::EndChild();
 
-        ImGui::EndTable();
-      }
-
-      ImGui::SeparatorText("Parameters");
-      PushStyleCompact();
-      if (ImGui::BeginChild("parameters", ImGui::GetContentRegionAvail(), ImGuiChildFlags_Borders))
-      {
-        const auto count = std::min<std::size_t>(status.parameter_count, sranipatch::max_parameters);
-        sranipatch::draw_parameter_grid(std::span(status.parameters.data(), count));
-      }
-      PopStyleCompact();
-      ImGui::EndChild();
-
-      ImGui::End();
-      ImGui::Render();
-      int width {}, height {};
-      glfwGetFramebufferSize(window, &width, &height);
-      glViewport(0, 0, width, height);
-      glClearColor(0.08F, 0.09F, 0.11F, 1.0F);
-      glClear(GL_COLOR_BUFFER_BIT);
-      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    };
-    glfwSetWindowUserPointer(window, &renderer);
-
-    // GLFW fixes the order and types of the framebuffer dimensions.
-    // NOLINTBEGIN(bugprone-easily-swappable-parameters)
-    glfwSetFramebufferSizeCallback(
-      window, [](GLFWwindow*, int width, int height) { glViewport(0, 0, width, height); }
+        ImGui::End();
+      },
+      interrupted
     );
-    // NOLINTEND(bugprone-easily-swappable-parameters)
-    glfwSetWindowRefreshCallback(window, [](GLFWwindow* refreshed_window) {
-      auto& renderer = *static_cast<WindowRenderer*>(glfwGetWindowUserPointer(refreshed_window));
-      try
-      {
-        renderer.draw(refreshed_window, true);
-      }
-      catch (...)
-      {
-        renderer.error = std::current_exception();
-      }
-    });
-
-    while (!interrupted && !glfwWindowShouldClose(window))
-    {
-      glfwPollEvents();
-      if (renderer.error)
-        std::rethrow_exception(renderer.error);
-      if (!interrupted && !glfwWindowShouldClose(window))
-        renderer.draw(window, false);
-    }
-
-    glfwSetWindowRefreshCallback(window, nullptr);
-    glfwSetFramebufferSizeCallback(window, nullptr);
-    glfwSetWindowUserPointer(window, nullptr);
-    head.reset();
-    glDeleteTextures(1, &preview_texture);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImPlot::DestroyContext();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
     return 0;
   }
 }  // namespace
