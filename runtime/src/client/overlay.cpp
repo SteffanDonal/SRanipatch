@@ -64,7 +64,7 @@ namespace sranipatch
         throw std::runtime_error("OpenVR overlay interface is unavailable");
       check(vr::VROverlay()->CreateDashboardOverlay("sranipatch.dashboard", "SRanipatch", &handle,
         &thumbnail));
-      check(vr::VROverlay()->SetOverlayWidthInMeters(handle, 0.8F));
+      check(vr::VROverlay()->SetOverlayWidthInMeters(handle, 1.8F));
       check(vr::VROverlay()->SetOverlayInputMethod(handle, vr::VROverlayInputMethod_Mouse));
       const vr::HmdVector2_t mouse_scale { { static_cast<float>(size.width), static_cast<float>(height) } };
       check(vr::VROverlay()->SetOverlayMouseScale(handle, &mouse_scale));
