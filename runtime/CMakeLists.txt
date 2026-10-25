@@ -164,6 +164,13 @@ if(SRANIPATCH_BUILD_SERVER)
 endif()
 
 if(SRANIPATCH_BUILD_CLIENT)
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/head.glb" head_header LIMIT 43)
+    if(head_header MATCHES "^version https://git-lfs.github.com/spec/v1")
+        message(
+            FATAL_ERROR
+            "head.glb is a Git LFS pointer. Install Git LFS and run 'git lfs pull', then configure again."
+        )
+    endif()
     sranipatch_add_gui()
     add_library(sranipatch_head_model STATIC src/client/head_model.cpp)
     target_include_directories(sranipatch_head_model PUBLIC src/client)

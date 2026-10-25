@@ -8,7 +8,7 @@ C++20 server and Dear ImGui client. The server owns capture, MNN CPU inference a
 
 Run build commands from `runtime/`. Final packages are written to `../output/`.
 
-CMake 3.25+, Git and a C++20 compiler. Dependencies are pinned and fetched during configuration; `FETCHCONTENT_SOURCE_DIR_MNN`, `FETCHCONTENT_SOURCE_DIR_OPENCV`, `FETCHCONTENT_SOURCE_DIR_GLFW` and `FETCHCONTENT_SOURCE_DIR_IMGUI` accept local source trees.
+CMake 3.25+, Git LFS and a C++20 compiler. Run `git lfs pull` after cloning to download binary assets. Dependencies are pinned and fetched during configuration; `FETCHCONTENT_SOURCE_DIR_MNN`, `FETCHCONTENT_SOURCE_DIR_OPENCV`, `FETCHCONTENT_SOURCE_DIR_GLFW` and `FETCHCONTENT_SOURCE_DIR_IMGUI` accept local source trees.
 
 Windows x64: Visual Studio 2022 with Desktop development with C++ and a Windows SDK.
 
