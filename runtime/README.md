@@ -48,7 +48,7 @@ The server reads OSC defaults from `~/.config/sranipatch/config.ini` on Linux, o
 
 ```ini
 osc_host=127.0.0.1
-osc_port=9000
+osc_port=9337
 osc_address=/sranipatch/parameters
 ```
 

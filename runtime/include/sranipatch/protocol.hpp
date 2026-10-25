@@ -53,7 +53,7 @@ namespace sranipatch
     std::array<char, 64> osc_host {};
     std::array<char, 128> osc_address {};
     std::uint32_t threads { 2 };
-    std::uint32_t osc_port { 9000 };
+    std::uint32_t osc_port { 9337 };
     float mean { 0.0F };
     float scale { 1.0F / 255.0F };
   };
