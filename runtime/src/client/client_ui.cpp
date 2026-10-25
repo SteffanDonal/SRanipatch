@@ -23,7 +23,7 @@ namespace sranipatch
 {
   struct ClientUi::Impl
   {
-    static constexpr SurfaceSize initial_size { 900, 720 };
+    static constexpr SurfaceSize initial_size { 900, 834 };
     GLFWwindow* window {};
     std::unique_ptr<Overlay> overlay;
     bool glfw {}, imgui {}, implot {}, glfw_backend {}, opengl_backend {}, rendering {};

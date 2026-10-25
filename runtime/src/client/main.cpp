@@ -271,7 +271,7 @@ namespace
             {
               if (head)
               {
-                const float side = std::clamp(ImGui::GetContentRegionAvail().x, 64.0F, 400.0F);
+                const float side = std::max(ImGui::GetContentRegionAvail().x, 64.0F);
                 const auto count = observed.tracking_fresh
                   ? std::min<std::size_t>(status.parameter_count,
                       sranipatch::max_parameters)
