@@ -3,6 +3,7 @@
 #include <charconv>
 #include <cstdlib>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -52,6 +53,61 @@ namespace sranipatch
 #endif
   }
 
+  namespace
+  {
+    Config parse(std::istream& input, Config parsed)
+    {
+      std::string line;
+      std::size_t line_number {};
+      while (std::getline(input, line))
+      {
+        ++line_number;
+        const auto text = trim(line);
+        if (text.empty() || text.front() == '#' || text.front() == ';')
+          continue;
+        const auto separator = text.find('=');
+        if (separator == std::string_view::npos)
+          throw std::runtime_error("Invalid configuration line " + std::to_string(line_number));
+        const auto key = trim(text.substr(0, separator));
+        const auto value = trim(text.substr(separator + 1));
+        if (key == "osc_host")
+        {
+          if (value.empty() || value == "\"\"" || value == "null")
+            set_text(parsed.osc_host, "");
+          else
+            checked_text(key, parsed.osc_host, value);
+        }
+        else if (key == "osc_address")
+        {
+          if (value.empty() || value.front() != '/')
+            throw std::runtime_error("osc_address must start with '/'");
+          checked_text(key, parsed.osc_address, value);
+        }
+        else if (key == "osc_port")
+        {
+          std::uint32_t port {};
+          const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), port);
+          if (error != std::errc {} || end != value.data() + value.size() || port == 0 || port > 65535)
+            throw std::runtime_error("osc_port must be between 1 and 65535");
+          parsed.osc_port = port;
+        }
+        else
+        {
+          throw std::runtime_error("Unknown configuration key on line " + std::to_string(line_number) + ": " + std::string(key));
+        }
+      }
+      if (!input.eof())
+        throw std::runtime_error("Cannot read configuration");
+      return parsed;
+    }
+  }  // namespace
+
+  Config parse_osc_config(std::string_view text, Config defaults)
+  {
+    std::istringstream input { std::string(text) };
+    return parse(input, defaults);
+  }
+
   bool load_osc_config(const std::filesystem::path& path, Config& config)
   {
     if (path.empty() || !std::filesystem::exists(path))
@@ -59,49 +115,7 @@ namespace sranipatch
     std::ifstream input(path);
     if (!input)
       throw std::runtime_error("Cannot open configuration: " + path.string());
-    Config parsed = config;
-    std::string line;
-    std::size_t line_number {};
-    while (std::getline(input, line))
-    {
-      ++line_number;
-      const auto text = trim(line);
-      if (text.empty() || text.front() == '#' || text.front() == ';')
-        continue;
-      const auto separator = text.find('=');
-      if (separator == std::string_view::npos)
-        throw std::runtime_error("Invalid configuration line " + std::to_string(line_number));
-      const auto key = trim(text.substr(0, separator));
-      const auto value = trim(text.substr(separator + 1));
-      if (key == "osc_host")
-      {
-        if (value.empty() || value == "\"\"" || value == "null")
-          set_text(parsed.osc_host, "");
-        else
-          checked_text(key, parsed.osc_host, value);
-      }
-      else if (key == "osc_address")
-      {
-        if (value.empty() || value.front() != '/')
-          throw std::runtime_error("osc_address must start with '/'");
-        checked_text(key, parsed.osc_address, value);
-      }
-      else if (key == "osc_port")
-      {
-        std::uint32_t port {};
-        const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), port);
-        if (error != std::errc {} || end != value.data() + value.size() || port == 0 || port > 65535)
-          throw std::runtime_error("osc_port must be between 1 and 65535");
-        parsed.osc_port = port;
-      }
-      else
-      {
-        throw std::runtime_error("Unknown configuration key on line " + std::to_string(line_number) + ": " + std::string(key));
-      }
-    }
-    if (!input.eof())
-      throw std::runtime_error("Cannot read configuration: " + path.string());
-    config = parsed;
+    config = parse(input, config);
     return true;
   }
 }  // namespace sranipatch

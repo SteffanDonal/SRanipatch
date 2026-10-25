@@ -2,6 +2,7 @@
 #include "sranipatch/config.hpp"
 #include "sranipatch/inference.hpp"
 #include "sranipatch/ipc.hpp"
+#include "sranipatch/live_osc_config.hpp"
 #include "sranipatch/osc.hpp"
 
 #include <atomic>
@@ -31,6 +32,7 @@ namespace
   struct Options
   {
     sranipatch::Config config;
+    sranipatch::OscOverrides osc_overrides;
     sranipatch::InferencePrecision precision { default_precision };
     std::string ipc { "sranipatch" };
     bool help {};
@@ -58,9 +60,6 @@ namespace
     Options options;
     sranipatch::set_text(options.config.model, "../assets/models/lip_model.mnn");
     sranipatch::set_text(options.config.osc_address, "/sranipatch/parameters");
-    const auto config_path = sranipatch::default_config_path();
-    if (sranipatch::load_osc_config(config_path, options.config))
-      std::cout << "Loaded configuration from " << config_path << '\n';
     for (int i = 1; i < argc; ++i)
     {
       const std::string_view key(argv[i]);
@@ -88,11 +87,20 @@ namespace
           throw std::runtime_error("Precision must be normal or low");
       }
       else if (key == "--osc-host")
+      {
         argument_text(options.config.osc_host, value);
+        options.osc_overrides.host = true;
+      }
       else if (key == "--osc-port")
+      {
         options.config.osc_port = number(value, 1, 65535);
+        options.osc_overrides.port = true;
+      }
       else if (key == "--osc-address")
+      {
         argument_text(options.config.osc_address, value);
+        options.osc_overrides.address = true;
+      }
       else
         throw std::runtime_error("Unknown option: " + std::string(key));
     }
@@ -108,9 +116,11 @@ namespace
 
   int serve(const Options& options)
   {
+    const auto config_path = sranipatch::default_config_path();
+    sranipatch::LiveOscConfig live_config(config_path, options.config, options.osc_overrides);
     sranipatch::SharedMemory ipc(options.ipc, sranipatch::SharedMemory::Role::server);
     sranipatch::Status status;
-    status.config = options.config;
+    status.config = live_config.config();
     status.session_id = sranipatch::monotonic_ns();
     status.heartbeat_ns = status.session_id;
     ipc.publish(status);
@@ -118,9 +128,6 @@ namespace
     {
       auto inference = sranipatch::open_lip_mnn(options.config, options.precision);
       std::cout << "MNN CPU precision: " << precision_name(options.precision) << '\n';
-      sranipatch::OscSender osc(options.config.osc_host.data(),
-        static_cast<std::uint16_t>(options.config.osc_port),
-        options.config.osc_address.data());
       sranipatch::LatestFrame latest;
       std::atomic<std::uint64_t> captured {};
       std::atomic<bool> capture_connected {};
@@ -181,6 +188,20 @@ namespace
       std::uint64_t preview_time {};
       while (!interrupted)
       {
+        try
+        {
+          if (live_config.poll())
+          {
+            status.config = live_config.config();
+            std::cout << "Reloaded configuration from " << config_path << '\n';
+          }
+        }
+        catch (const std::exception& error)
+        {
+          std::cerr << "Configuration reload failed (" << config_path << "): " << error.what()
+                    << "; keeping the last working configuration\n";
+        }
+        auto& osc = live_config.sender();
         osc.refresh();
         if (capture_fault.load(std::memory_order_acquire))
         {

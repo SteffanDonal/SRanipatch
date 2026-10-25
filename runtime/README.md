@@ -44,7 +44,7 @@ Run `sranipatch-server --help` for model, OSC and IPC options. Both processes mu
 
 The client previews live lip blendshapes using `head.glb` beside its executable. `sranipatch-client --head PATH` selects another model. The Blendshapes tab shows the head preview; the Camera tab shows the tracker image.
 
-The server reads OSC defaults from `~/.config/sranipatch/config.ini` on Linux, or `%APPDATA%\sranipatch\config.ini` on Windows. Command-line options override the file. Supported keys are:
+The server reads OSC defaults from `~/.config/sranipatch/config.ini` on Linux, or `%APPDATA%\sranipatch\config.ini` on Windows. Saved changes apply automatically; invalid or missing files leave the last working configuration active. Removing a setting restores its default. Command-line options override the file. Supported keys are:
 
 ```ini
 osc_host=127.0.0.1

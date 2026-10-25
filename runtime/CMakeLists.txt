@@ -87,6 +87,7 @@ add_library(
     src/osc.cpp
     src/frame.cpp
     src/config.cpp
+    src/live_osc_config.cpp
     src/capture/vive_tracker.cpp
 )
 target_include_directories(sranipatch_core PUBLIC include)
@@ -276,6 +277,13 @@ if(BUILD_TESTING)
     target_link_libraries(sranipatch-tests PRIVATE sranipatch_core)
     sranipatch_target(sranipatch-tests)
     add_test(NAME core COMMAND sranipatch-tests)
+    add_executable(sranipatch-config-reload-tests tests/config_reload_tests.cpp)
+    target_link_libraries(
+        sranipatch-config-reload-tests
+        PRIVATE sranipatch_core
+    )
+    sranipatch_target(sranipatch-config-reload-tests)
+    add_test(NAME config-reload COMMAND sranipatch-config-reload-tests)
     if(NOT WIN32)
         add_executable(
             sranipatch-osc-discovery-tests
