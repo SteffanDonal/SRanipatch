@@ -75,7 +75,7 @@ namespace sranipatch
         throw std::runtime_error("OpenGL 3.3 loader initialization failed");
       glfwSwapInterval(in_overlay ? 0 : 1);
       if (in_overlay)
-        overlay = std::make_unique<Overlay>(initial_size);
+        overlay = std::make_unique<Overlay>(initial_size, font.parent_path() / "icon-128.png");
       IMGUI_CHECKVERSION();
       ImGui::CreateContext();
       imgui = true;

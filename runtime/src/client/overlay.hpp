@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <memory>
 
 namespace sranipatch
@@ -13,7 +14,7 @@ namespace sranipatch
   class Overlay
   {
   public:
-    explicit Overlay(SurfaceSize size);
+    Overlay(SurfaceSize size, const std::filesystem::path& thumbnail);
     ~Overlay();
     Overlay(const Overlay&) = delete;
     Overlay& operator=(const Overlay&) = delete;

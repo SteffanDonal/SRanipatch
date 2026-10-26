@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
 project(sranipatch VERSION 0.1.0 LANGUAGES C CXX)
+if(WIN32)
+    enable_language(RC)
+    configure_file(cmake/icon.rc.in "${CMAKE_CURRENT_BINARY_DIR}/icon.rc" @ONLY)
+endif()
 
 if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message(FATAL_ERROR "Supported platforms are Windows and Linux")
@@ -68,6 +72,10 @@ if(SRANIPATCH_ENABLE_IPO AND NOT SRANIPATCH_SANITIZE)
 endif()
 function(sranipatch_target target)
     target_link_libraries(${target} PRIVATE sranipatch_options)
+    get_target_property(target_type ${target} TYPE)
+    if(WIN32 AND target_type STREQUAL "EXECUTABLE")
+        target_sources(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/icon.rc")
+    endif()
     if(sranipatch_ipo_supported)
         set_property(
             TARGET ${target}
@@ -235,10 +243,17 @@ if(SRANIPATCH_BUILD_CLIENT)
             ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/Quicksand-Medium.ttf"
             "$<TARGET_FILE_DIR:sranipatch-client>/Quicksand-Medium.ttf"
+        COMMAND
+            ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon-128.png"
+            "$<TARGET_FILE_DIR:sranipatch-client>/icon-128.png"
     )
     install(TARGETS sranipatch-client RUNTIME DESTINATION bin COMPONENT Runtime)
     install(
-        FILES assets/head.glb assets/fonts/Quicksand-Medium.ttf
+        FILES
+            assets/head.glb
+            assets/fonts/Quicksand-Medium.ttf
+            assets/icon-128.png
         DESTINATION bin
         COMPONENT Runtime
     )

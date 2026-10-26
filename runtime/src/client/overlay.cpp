@@ -52,7 +52,7 @@ namespace sranipatch
         glDeleteTextures(1, &texture);
     }
 
-    void initialize(SurfaceSize size)
+    void initialize(SurfaceSize size, const std::filesystem::path& thumbnail_path)
     {
       height = size.height;
       vr::EVRInitError error = vr::VRInitError_None;
@@ -64,6 +64,9 @@ namespace sranipatch
         throw std::runtime_error("OpenVR overlay interface is unavailable");
       check(vr::VROverlay()->CreateDashboardOverlay("sranipatch.dashboard", "SRanipatch", &handle,
         &thumbnail));
+      const auto thumbnail_utf8 = std::filesystem::absolute(thumbnail_path).u8string();
+      const std::string thumbnail_filename(thumbnail_utf8.begin(), thumbnail_utf8.end());
+      check(vr::VROverlay()->SetOverlayFromFile(thumbnail, thumbnail_filename.c_str()));
       check(vr::VROverlay()->SetOverlayWidthInMeters(handle, 1.8F));
       check(vr::VROverlay()->SetOverlayInputMethod(handle, vr::VROverlayInputMethod_Mouse));
       const vr::HmdVector2_t mouse_scale { { static_cast<float>(size.width), static_cast<float>(height) } };
@@ -129,9 +132,9 @@ namespace sranipatch
     }
   };
 
-  Overlay::Overlay(SurfaceSize size) : impl_(std::make_unique<Impl>())
+  Overlay::Overlay(SurfaceSize size, const std::filesystem::path& thumbnail) : impl_(std::make_unique<Impl>())
   {
-    impl_->initialize(size);
+    impl_->initialize(size, thumbnail);
   }
 
   Overlay::~Overlay() = default;
@@ -164,11 +167,7 @@ namespace sranipatch
     const vr::Texture_t texture { reinterpret_cast<void*>(static_cast<std::uintptr_t>(impl_->texture)),
       vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
     check(vr::VROverlay()->SetOverlayTexture(impl_->handle, &texture));
-    if (!impl_->submitted)
-    {
-      check(vr::VROverlay()->SetOverlayTexture(impl_->thumbnail, &texture));
-      impl_->submitted = true;
-    }
+    impl_->submitted = true;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
   }
 
