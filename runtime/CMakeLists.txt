@@ -171,11 +171,15 @@ if(SRANIPATCH_BUILD_SERVER)
 endif()
 
 if(SRANIPATCH_BUILD_CLIENT)
-    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/head.glb" head_header LIMIT 43)
+    file(
+        READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/head.glb"
+        head_header
+        LIMIT 43
+    )
     if(head_header MATCHES "^version https://git-lfs.github.com/spec/v1")
         message(
             FATAL_ERROR
-            "head.glb is a Git LFS pointer. Install Git LFS and run 'git lfs pull', then configure again."
+            "assets/head.glb is a Git LFS pointer. Install Git LFS and run 'git lfs pull', then configure again."
         )
     endif()
     sranipatch_add_gui()
@@ -225,7 +229,7 @@ if(SRANIPATCH_BUILD_CLIENT)
         POST_BUILD
         COMMAND
             ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/head.glb"
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/head.glb"
             "$<TARGET_FILE_DIR:sranipatch-client>/head.glb"
         COMMAND
             ${CMAKE_COMMAND} -E copy_if_different
@@ -234,7 +238,7 @@ if(SRANIPATCH_BUILD_CLIENT)
     )
     install(TARGETS sranipatch-client RUNTIME DESTINATION bin COMPONENT Runtime)
     install(
-        FILES head.glb assets/fonts/Quicksand-Medium.ttf
+        FILES assets/head.glb assets/fonts/Quicksand-Medium.ttf
         DESTINATION bin
         COMPONENT Runtime
     )
@@ -262,7 +266,9 @@ if(BUILD_TESTING)
         sranipatch_target(sranipatch-head-tests)
         add_test(
             NAME head-model
-            COMMAND sranipatch-head-tests "${CMAKE_CURRENT_SOURCE_DIR}/head.glb"
+            COMMAND
+                sranipatch-head-tests
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/head.glb"
         )
         set_tests_properties(head-model PROPERTIES TIMEOUT 20)
         # Requires a graphics session; run explicitly rather than on headless CI.
