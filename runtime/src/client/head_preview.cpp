@@ -208,7 +208,7 @@ void main() {
       glDisable(GL_BLEND);
       glDisable(GL_CULL_FACE);
       glDisable(GL_SCISSOR_TEST);
-      glClearColor(0.08F, 0.09F, 0.11F, 1.0F);
+      glClearColor(32.0F / 255, 32.0F / 255, 32.0F / 255, 1.0F);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
       glUseProgram(program);
       // Orthographic camera looking along +Z; Y=0 maps to the top clip plane (Y=1).

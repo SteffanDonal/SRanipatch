@@ -175,8 +175,8 @@ namespace
     auto* draw = ImGui::GetWindowDrawList();
     const auto size = ImGui::CalcTextSize(label);
     draw->PushClipRect(min, max, true);
-    draw->AddRectFilled(min, ImVec2(min.x + size.x + 12, min.y + size.y + 8), IM_COL32(20, 23, 28, 220), 3);
-    draw->AddText(ImVec2(min.x + 6, min.y + 4), IM_COL32(220, 220, 220, 255), label);
+    draw->AddRectFilled(min, ImVec2(min.x + size.x + 12, min.y + size.y + 8), ImGui::GetColorU32(ImGuiCol_ChildBg), ImGui::GetStyle().FrameRounding);
+    draw->AddText(ImVec2(min.x + 6, min.y + 4), ImGui::GetColorU32(ImGuiCol_Text), label);
     draw->PopClipRect();
   }
 
@@ -207,10 +207,11 @@ namespace
         if (observed.frame_changed)
           camera_texture.upload(preview);
         performance.update(observed, sranipatch::monotonic_ns());
-        ImGui::SetNextWindowPos(ImVec2(0, 0));
-        ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+        const auto* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->WorkPos);
+        ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGui::Begin("Server", nullptr,
-          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground);
         if (ImGui::BeginTable("dashboard", 2, ImGuiTableFlags_Resizable))
         {
           ImGui::TableNextColumn();
@@ -275,7 +276,7 @@ namespace
           PopStyleCompact();
 
           ImGui::TableNextColumn();
-          if (ImGui::BeginTabBar("preview"))
+          if (ImGui::BeginTabBar("preview", ImGuiTabBarFlags_DrawSelectedOverline))
           {
             if (ImGui::BeginTabItem("Blendshapes"))
             {

@@ -230,7 +230,14 @@ if(SRANIPATCH_BUILD_CLIENT)
             sranipatch-client
             PROPERTIES WIN32_EXECUTABLE TRUE
         )
-        target_link_libraries(sranipatch-client PRIVATE user32)
+        target_sources(
+            sranipatch-client
+            PRIVATE src/client/windows_chrome.cpp src/client/windows_surface.cpp
+        )
+        target_link_libraries(
+            sranipatch-client
+            PRIVATE user32 gdi32 comctl32 dwmapi uxtheme dxgi d3d11
+        )
     endif()
     add_custom_command(
         TARGET sranipatch-client

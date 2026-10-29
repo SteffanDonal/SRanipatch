@@ -5,14 +5,13 @@
 
 namespace sranipatch
 {
-  void set_dark_pastel_style()
+  void set_dark_style()
   {
     ImGui::StyleColorsDark();
     auto& style = ImGui::GetStyle();
-    auto& plot_style = ImPlot::GetStyle();
     auto* colors = style.Colors;
 
-    colors[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.13f, 0.15f, 1.00f);
+    colors[ImGuiCol_WindowBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
     colors[ImGuiCol_ChildBg] = ImVec4(0.14f, 0.15f, 0.17f, 1.00f);
     colors[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.10f, 0.12f, 0.95f);
     colors[ImGuiCol_Border] = ImVec4(0.30f, 0.33f, 0.42f, 0.40f);
@@ -83,6 +82,9 @@ namespace sranipatch
     style.ItemInnerSpacing = ImVec2(6, 4);
     style.IndentSpacing = 20.0f;
 
+    ImPlot::StyleColorsAuto();
+    auto& plot_style = ImPlot::GetStyle();
+    plot_style.Colormap = ImPlotColormap_Paired;
     plot_style.PlotPadding = { 0, 0 };
   }
 }  // namespace sranipatch

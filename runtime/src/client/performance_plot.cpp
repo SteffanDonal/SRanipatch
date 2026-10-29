@@ -21,7 +21,9 @@ namespace sranipatch
 
     void reference(double value, const char* label, ImAxis axis)
     {
-      const auto colour = axis == ImAxis_Y1 ? IM_COL32(130, 190, 230, 180) : IM_COL32(240, 190, 140, 180);
+      auto tint = ImPlot::GetColormapColor(axis == ImAxis_Y1 ? 0 : 3);
+      tint.w = 0.7F;
+      const auto colour = ImGui::GetColorU32(tint);
       ImPlot::SetAxes(ImAxis_X1, axis);
       const auto limits = ImPlot::GetPlotLimits();
       const auto left = ImPlot::PlotToPixels(limits.X.Min, value);
@@ -89,10 +91,10 @@ namespace sranipatch
     };
 
     const std::array metrics {
-      Metric { "Capture", "capture", "fps", &capture_, 0, ImAxis_Y1, { 0.50F, 0.75F, 1.0F, 1.0F } },
-      Metric { "Inference", "inference-fps", "fps", &inference_, 0, ImAxis_Y1, { 0.55F, 0.90F, 0.70F, 1.0F } },
-      Metric { "Frame age", "frame-age", "ms", &inference_, 2, ImAxis_Y2, { 0.85F, 0.65F, 1.0F, 1.0F } },
-      Metric { "Inference", "inference-ms", "ms", &inference_, 1, ImAxis_Y2, { 1.0F, 0.75F, 0.50F, 1.0F } }
+      Metric { "Capture", "capture", "fps", &capture_, 0, ImAxis_Y1, ImPlot::GetColormapColor(0) },
+      Metric { "Inference", "inference-fps", "fps", &inference_, 0, ImAxis_Y1, ImPlot::GetColormapColor(1) },
+      Metric { "Frame age", "frame-age", "ms", &inference_, 2, ImAxis_Y2, ImPlot::GetColormapColor(2) },
+      Metric { "Inference", "inference-ms", "ms", &inference_, 1, ImAxis_Y2, ImPlot::GetColormapColor(3) }
     };
     const float plot_right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
 
