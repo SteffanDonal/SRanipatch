@@ -38,17 +38,16 @@ namespace
   void saved_config_replaces_destination_after_debounce()
   {
     ConfigFile file;
-    file.write("osc_host=127.0.0.1\nosc_port=12345\nosc_address=/before\n");
+    file.write("osc_host=127.0.0.1\nosc_port=12345\n");
     sranipatch::Config defaults;
-    sranipatch::set_text(defaults.osc_address, "/sranipatch/parameters");
     sranipatch::LiveOscConfig live(file.path, defaults, {});
     require(live.config().osc_port == 12345, "Startup file was not loaded");
     auto now = std::chrono::steady_clock::now();
-    file.write("osc_host=127.0.0.2\nosc_port=23456\nosc_address=/after\n");
+    file.write("osc_host=127.0.0.2\nosc_port=23456\n");
     require(!live.poll(now), "Save should be debounced");
     require(!live.poll(now + 100ms), "Save applied before debounce finished");
     require(live.poll(now + 300ms), "Saved config was not applied promptly");
-    require(live.config().osc_port == 23456 && std::string_view(live.config().osc_address.data()) == "/after" && std::string_view(live.sender().destination().host.data()) == "127.0.0.2" && live.sender().destination().port == 23456 && live.sender().destination().ready,
+    require(live.config().osc_port == 23456 && std::string_view(live.sender().destination().host.data()) == "127.0.0.2" && live.sender().destination().port == 23456 && live.sender().destination().ready,
       "Config and sender were not replaced together");
   }
 
@@ -57,7 +56,6 @@ namespace
     ConfigFile file;
     file.write("osc_host=127.0.0.1\nosc_port=12345\n");
     sranipatch::Config defaults;
-    sranipatch::set_text(defaults.osc_address, "/sranipatch/parameters");
     sranipatch::LiveOscConfig live(file.path, defaults, {});
     auto now = std::chrono::steady_clock::now();
     auto* original = &live.sender();
@@ -102,24 +100,22 @@ namespace
   void removed_settings_restore_defaults_and_cli_overrides_win()
   {
     ConfigFile file;
-    file.write("osc_host=127.0.0.1\nosc_port=12345\nosc_address=/file\n");
+    file.write("osc_host=127.0.0.1\nosc_port=12345\n");
     sranipatch::Config defaults;
-    sranipatch::set_text(defaults.osc_address, "/sranipatch/parameters");
     sranipatch::LiveOscConfig live(file.path, defaults, {});
     auto now = std::chrono::steady_clock::now();
     file.write("");
     live.poll(now);
-    require(live.poll(now + 300ms) && live.config().osc_host[0] == '\0' && live.config().osc_port == 9337 && std::string_view(live.config().osc_address.data()) == "/sranipatch/parameters",
+    require(live.poll(now + 300ms) && live.config().osc_host[0] == '\0' && live.config().osc_port == 9337,
       "Removed settings did not restore defaults");
     sranipatch::set_text(defaults.osc_host, "127.0.0.3");
     defaults.osc_port = 34567;
-    sranipatch::set_text(defaults.osc_address, "/cli");
-    sranipatch::LiveOscConfig overridden(file.path, defaults, { true, true, true });
+    sranipatch::LiveOscConfig overridden(file.path, defaults, { true, true });
     auto* sender = &overridden.sender();
-    file.write("osc_host=127.0.0.2\nosc_port=23456\nosc_address=/changed\n");
+    file.write("osc_host=127.0.0.2\nosc_port=23456\n");
     overridden.poll(now);
     overridden.poll(now + 300ms);
-    require(overridden.config().osc_port == 34567 && std::string_view(overridden.config().osc_host.data()) == "127.0.0.3" && std::string_view(overridden.config().osc_address.data()) == "/cli" && &overridden.sender() == sender,
+    require(overridden.config().osc_port == 34567 && std::string_view(overridden.config().osc_host.data()) == "127.0.0.3" && &overridden.sender() == sender,
       "File changes overrode CLI options or restarted unchanged output");
   }
 
@@ -128,7 +124,6 @@ namespace
     ConfigFile file;
     file.write("osc_host=127.0.0.1\n");
     sranipatch::Config defaults;
-    sranipatch::set_text(defaults.osc_address, "/sranipatch/parameters");
     sranipatch::LiveOscConfig live(file.path, defaults, {});
     auto* sender = &live.sender();
     std::filesystem::remove(file.path);
@@ -152,7 +147,6 @@ namespace
     ConfigFile file;
     file.write("osc_host=127.0.0.1\n");
     sranipatch::Config defaults;
-    sranipatch::set_text(defaults.osc_address, "/sranipatch/parameters");
     sranipatch::LiveOscConfig live(file.path, defaults, {});
     const auto stamp = std::filesystem::last_write_time(file.path);
     ConfigFile replacement;
@@ -177,15 +171,14 @@ namespace
     ConfigFile file;
     sranipatch::Config defaults;
     sranipatch::set_text(defaults.osc_host, "127.0.0.1");
-    sranipatch::set_text(defaults.osc_address, "/sranipatch/parameters");
     sranipatch::set_text(defaults.model, "custom.mnn");
     defaults.threads = 3;
     defaults.osc_port = 34567;
-    sranipatch::LiveOscConfig live(file.path, defaults, { false, true, false });
-    file.write("osc_host=127.0.0.2\nosc_port=12345\nosc_address=/file\n");
+    sranipatch::LiveOscConfig live(file.path, defaults, { false, true });
+    file.write("osc_host=127.0.0.2\nosc_port=12345\n");
     const auto now = std::chrono::steady_clock::now();
     live.poll(now);
-    require(live.poll(now + 300ms) && live.config().osc_port == 34567 && std::string_view(live.sender().destination().host.data()) == "127.0.0.2" && std::string_view(live.config().osc_address.data()) == "/file" && live.config().threads == 3 && std::string_view(live.config().model.data()) == "custom.mnn",
+    require(live.poll(now + 300ms) && live.config().osc_port == 34567 && std::string_view(live.sender().destination().host.data()) == "127.0.0.2" && live.config().threads == 3 && std::string_view(live.config().model.data()) == "custom.mnn",
       "Created config lost individual overrides or changed inference settings");
   }
 }  // namespace

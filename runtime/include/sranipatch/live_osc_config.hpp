@@ -11,7 +11,6 @@ namespace sranipatch
   {
     bool host {};
     bool port {};
-    bool address {};
   };
 
   class LiveOscConfig

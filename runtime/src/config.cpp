@@ -77,12 +77,6 @@ namespace sranipatch
           else
             checked_text(key, parsed.osc_host, value);
         }
-        else if (key == "osc_address")
-        {
-          if (value.empty() || value.front() != '/')
-            throw std::runtime_error("osc_address must start with '/'");
-          checked_text(key, parsed.osc_address, value);
-        }
         else if (key == "osc_port")
         {
           std::uint32_t port {};

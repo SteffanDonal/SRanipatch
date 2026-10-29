@@ -44,12 +44,13 @@ Run `sranipatch-server --help` for model, OSC and IPC options. Both processes mu
 
 The client previews live lip blendshapes using `head.glb` beside its executable. `sranipatch-client --head PATH` selects another model. The Blendshapes tab shows the head preview; the Camera tab shows the tracker image.
 
+OSC output uses the [VRChat face tracking protocol](https://vrc-beta-docs.netlify.app/avatars/face-tracking/osc/): a 102-byte blob at `/tracking/face/v1`. Unsupported expressions are zero.
+
 The server reads OSC defaults from `~/.config/sranipatch/config.ini` on Linux, or `%APPDATA%\sranipatch\config.ini` on Windows. Saved changes apply automatically; invalid or missing files leave the last working configuration active. Removing a setting restores its default. Command-line options override the file. Supported keys are:
 
 ```ini
 osc_host=127.0.0.1
 osc_port=9337
-osc_address=/sranipatch/parameters
 ```
 
 On Linux, omitting `osc_host` or setting it to an empty value, `""`, or `null` discovers the Steam Link PC automatically. Discovery checks every two seconds. Without a peer, the server closes the camera and pauses inference; the model loads on first use and stays loaded for reconnection. An explicit IP overrides discovery. On Windows, these default values use `127.0.0.1`.

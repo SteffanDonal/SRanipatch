@@ -57,7 +57,6 @@ namespace
   {
     Options options;
     sranipatch::set_text(options.config.model, "../assets/models/lip_model.mnn");
-    sranipatch::set_text(options.config.osc_address, "/sranipatch/parameters");
     for (int i = 1; i < argc; ++i)
     {
       const std::string_view key(argv[i]);
@@ -94,11 +93,6 @@ namespace
         options.config.osc_port = number(value, 1, 65535);
         options.osc_overrides.port = true;
       }
-      else if (key == "--osc-address")
-      {
-        argument_text(options.config.osc_address, value);
-        options.osc_overrides.address = true;
-      }
       else
         throw std::runtime_error("Unknown option: " + std::string(key));
     }
@@ -109,7 +103,7 @@ namespace
   {
     std::cout << "sranipatch-server [options]\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
               << precision_name(default_precision)
-              << ")\n" "  --osc-host IP --osc-port N --osc-address /path\n" "  --ipc NAME        Shared-memory channel (default sranipatch)\n";
+              << ")\n" "  --osc-host IP --osc-port N\n" "  --ipc NAME        Shared-memory channel (default sranipatch)\n";
   }
 
   int serve(const Options& options)

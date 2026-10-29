@@ -3,6 +3,7 @@
 #include "observation.hpp"
 #include "parameter_grid.hpp"
 #include "performance_plot.hpp"
+#include "sranipatch/osc.hpp"
 
 #include <glad/gl.h>
 #include <imgui.h>
@@ -265,7 +266,7 @@ namespace
               }
               if (status.osc_failures > 0)
                 ImGui::Text("Errors: %llu", static_cast<unsigned long long>(status.osc_failures));
-              ImGui::TextWrapped("%s", status.config.osc_address.data());
+              ImGui::TextWrapped("%.*s", static_cast<int>(sranipatch::face_tracking_address.size()), sranipatch::face_tracking_address.data());
             }
 
             ImGui::EndTable();

@@ -10,12 +10,14 @@
 
 namespace sranipatch
 {
-  std::vector<std::uint8_t> encode_osc(std::string_view address, std::span<const float> values);
+  inline constexpr std::string_view face_tracking_address = "/tracking/face/v1";
+
+  std::vector<std::uint8_t> encode_osc(std::span<const float> values);
 
   class OscSender
   {
   public:
-    OscSender(const std::string& host, std::uint16_t port, std::string address);
+    OscSender(const std::string& host, std::uint16_t port);
     ~OscSender();
     OscSender(const OscSender&) = delete;
     OscSender& operator=(const OscSender&) = delete;

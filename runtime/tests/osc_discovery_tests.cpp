@@ -39,7 +39,7 @@ int main()
 {
   try
   {
-    sranipatch::OscSender sender("", 9337, "/test");
+    sranipatch::OscSender sender("", 9337);
     require(sender.waiting_for_peer() && !sender.destination().ready && !sender.destination().host[0],
       "Initial state must be waiting");
     sender.refresh();

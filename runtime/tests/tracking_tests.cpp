@@ -187,7 +187,6 @@ namespace
     } file;
 
     sranipatch::Config defaults;
-    sranipatch::set_text(defaults.osc_address, "/test");
     sranipatch::LiveOscConfig live(file.path, defaults, {});
     sranipatch::Tracking tracking(defaults, sranipatch::InferencePrecision::normal);
     sranipatch::Status status;

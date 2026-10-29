@@ -49,13 +49,10 @@ namespace sranipatch
       candidate.osc_host = defaults_.osc_host;
     if (overrides_.port)
       candidate.osc_port = defaults_.osc_port;
-    if (overrides_.address)
-      candidate.osc_address = defaults_.osc_address;
-    if (sender_ && candidate.osc_host == config_.osc_host && candidate.osc_port == config_.osc_port && candidate.osc_address == config_.osc_address)
+    if (sender_ && candidate.osc_host == config_.osc_host && candidate.osc_port == config_.osc_port)
       return;
     auto sender =
-      std::make_unique<OscSender>(candidate.osc_host.data(), static_cast<std::uint16_t>(candidate.osc_port),
-        candidate.osc_address.data());
+      std::make_unique<OscSender>(candidate.osc_host.data(), static_cast<std::uint16_t>(candidate.osc_port));
     sender_ = std::move(sender);
     config_ = candidate;
   }

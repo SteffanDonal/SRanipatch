@@ -1,7 +1,8 @@
 #include "sranipatch/osc.hpp"
 
-#include <bit>
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #ifdef _WIN32
@@ -20,40 +21,66 @@ namespace sranipatch
 {
   namespace
   {
-    void append_string(std::vector<std::uint8_t>& packet, std::string_view text)
+    void encode_into(std::vector<std::uint8_t>& packet, std::span<const float> s)
     {
-      packet.insert(packet.end(), text.begin(), text.end());
-      packet.push_back(0);
-      while (packet.size() % 4 != 0)
-        packet.push_back(0);
-    }
+      if (s.size() != 37)
+        throw std::runtime_error("Face tracking OSC requires exactly 37 lip parameters");
 
-    void encode_into(std::vector<std::uint8_t>& packet, std::string_view address, std::span<const float> values)
-    {
-      if (address.empty() || address.front() != '/' || address.find('\0') != std::string_view::npos || address.size() > 1024 || values.size() > 128)
-        throw std::runtime_error("OSC requires a slash-prefixed address and at most 128 floats");
-      packet.clear();
-      append_string(packet, address);
-      packet.push_back(',');
-      packet.insert(packet.end(), values.size(), 'f');
-      packet.push_back(0);
-      while (packet.size() % 4 != 0)
-        packet.push_back(0);
-      for (const float value : values)
+      // VRChat v1 tracking-key order. Unsupported expressions remain zero.
+      std::array<float, 102> mapped {};
+      mapped[30] = mapped[70] = mapped[72] = mapped[78] = s[12];
+      mapped[31] = mapped[71] = mapped[73] = mapped[79] = s[13];
+      mapped[32] = s[16];
+      mapped[33] = s[17];
+      mapped[34] = mapped[35] = s[18];
+      mapped[36] = s[3] + s[4];
+      mapped[37] = s[0];
+      mapped[38] = s[1];
+      mapped[39] = s[2];
+      mapped[43] = s[4];
+      mapped[44] = mapped[45] = s[23];
+      mapped[46] = mapped[47] = s[24];
+      mapped[50] = mapped[51] = s[9];
+      mapped[52] = mapped[53] = s[10];
+      mapped[54] = mapped[55] = mapped[56] = mapped[57] = s[11];
+      mapped[58] = mapped[60] = s[19] - s[9];
+      mapped[59] = mapped[61] = s[20] - s[9];
+      mapped[64] = s[21] - s[10];
+      mapped[65] = s[22] - s[10];
+      mapped[66] = s[5];
+      mapped[67] = s[6];
+      mapped[68] = s[7];
+      mapped[69] = s[8];
+      mapped[74] = mapped[76] = s[14];
+      mapped[75] = mapped[77] = s[15];
+      mapped[80] = s[25] - s[23];
+      mapped[81] = s[25];
+      mapped[86] = (s[26] + s[32]) / 2.0F;
+      mapped[87] = s[29];
+      mapped[88] = s[30];
+      mapped[89] = s[28];
+      mapped[90] = s[27];
+      mapped[91] = s[31];
+
+      // Padded address, blob tag, big-endian blob length, payload and padding.
+      packet.assign(132, 0);
+      std::copy(face_tracking_address.begin(), face_tracking_address.end(), packet.begin());
+      packet[20] = ',';
+      packet[21] = 'b';
+      packet[27] = static_cast<std::uint8_t>(mapped.size());
+      for (std::size_t i = 0; i < mapped.size(); ++i)
       {
-        const auto bits = std::bit_cast<std::uint32_t>(value);
-        packet.push_back(static_cast<std::uint8_t>(bits >> 24));
-        packet.push_back(static_cast<std::uint8_t>(bits >> 16));
-        packet.push_back(static_cast<std::uint8_t>(bits >> 8));
-        packet.push_back(static_cast<std::uint8_t>(bits));
+        const float value = mapped[i];
+        if (std::isfinite(value))
+          packet[28 + i] = static_cast<std::uint8_t>(std::clamp(value, 0.0F, 1.0F) * 255.0F);
       }
     }
   }  // namespace
 
-  std::vector<std::uint8_t> encode_osc(std::string_view address, std::span<const float> values)
+  std::vector<std::uint8_t> encode_osc(std::span<const float> values)
   {
     std::vector<std::uint8_t> packet;
-    encode_into(packet, address, values);
+    encode_into(packet, values);
     return packet;
   }
 
@@ -79,7 +106,6 @@ namespace sranipatch
         close(socket);
     }
 #endif
-    std::string address;
     std::vector<std::uint8_t> packet;
     OscDestination destination;
     void connect_host(const std::string& host, std::uint16_t port);
@@ -124,7 +150,7 @@ namespace sranipatch
 #endif
   };
 
-  OscSender::OscSender(const std::string& host, std::uint16_t port, std::string address)
+  OscSender::OscSender(const std::string& host, std::uint16_t port)
     : impl_(std::make_unique<Impl>())
   {
 #ifdef _WIN32
@@ -133,10 +159,8 @@ namespace sranipatch
       throw std::runtime_error("WSAStartup failed");
     impl_->winsock = true;
 #endif
-    impl_->address = std::move(address);
     impl_->destination.port = port;
-    impl_->packet.reserve(2048);
-    encode_into(impl_->packet, impl_->address, {});
+    impl_->packet.reserve(132);
 #ifdef _WIN32
     impl_->connect_host(host.empty() ? "127.0.0.1" : host, port);
 #else
@@ -224,7 +248,7 @@ namespace sranipatch
     if (impl_->socket < 0)
       return true;  // Waiting for Steam Link is not a failed send.
 #endif
-    encode_into(impl_->packet, impl_->address, values);
+    encode_into(impl_->packet, values);
 #ifdef _WIN32
     const auto sent = ::send(impl_->socket, reinterpret_cast<const char*>(impl_->packet.data()),
       static_cast<int>(impl_->packet.size()), 0);

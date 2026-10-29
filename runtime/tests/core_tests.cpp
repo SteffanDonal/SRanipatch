@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #ifdef _WIN32
 #include <winsock2.h>
@@ -67,13 +68,69 @@ namespace
 
   void osc_encoding()
   {
-    const std::array<float, 2> values { 1.0F, -0.5F };
-    const std::vector<std::uint8_t> expected { '/', 'x', 0, 0, ',', 'f', 'f', 0,
-      0x3f, 0x80, 0, 0, 0xbf, 0, 0, 0 };
-    require(sranipatch::encode_osc("/x", values) == expected, "OSC wire bytes / float endianness are wrong");
-    require(sranipatch::encode_osc("/long", {}).size() == 12, "OSC string padding is wrong");
-    must_throw([] { sranipatch::encode_osc("invalid", {}); });
-    must_throw([] { sranipatch::encode_osc(std::string_view("/x\0bad", 6), {}); });
+    std::array<float, 37> values {};
+    const std::vector<std::uint8_t> header {
+      '/', 't', 'r', 'a', 'c', 'k', 'i', 'n', 'g', '/', 'f', 'a', 'c', 'e', '/', 'v', '1', 0, 0, 0,
+      ',', 'b', 0, 0, 0, 0, 0, 102
+    };
+    auto expected = header;
+    expected.resize(132, 0);
+    require(sranipatch::encode_osc(values) == expected, "Neutral face OSC framing or padding is wrong");
+
+    // Distinct inputs exercise the complete mapping, including unused tongue morphs.
+    for (std::size_t i = 0; i < values.size(); ++i)
+      values[i] = static_cast<float>(i + 1) / 64.0F;
+    const std::array<std::uint8_t, 102> payload {
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      51, 55, 67, 71, 75, 75, 35, 3, 7, 11,
+      0, 0, 0, 19, 95, 95, 99, 99, 0, 0,
+      39, 39, 43, 43, 47, 47, 47, 47, 39, 43,
+      39, 43, 0, 0, 43, 47, 23, 27, 31, 35,
+      51, 55, 51, 55, 59, 63, 59, 63, 51, 55,
+      7, 103, 0, 0, 0, 0, 119, 119, 123, 115,
+      111, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    };
+    std::copy(payload.begin(), payload.end(), expected.begin() + 28);
+    require(sranipatch::encode_osc(values) == expected, "Face tracking key mapping differs");
+
+    values.fill(0);
+    values[9] = 1;
+    values[14] = 1;
+    auto packet = sranipatch::encode_osc(values);
+    require(packet[28 + 50] == 255 && packet[28 + 52] == 0 && packet[28 + 76] == 255 && packet[28 + 77] == 0,
+      "Upper overturn or right sadness leaked into lower or left outputs");
+    values.fill(0);
+    values[10] = 1;
+    values[15] = 1;
+    packet = sranipatch::encode_osc(values);
+    require(packet[28 + 50] == 0 && packet[28 + 52] == 255 && packet[28 + 76] == 0 && packet[28 + 77] == 255,
+      "Lower overturn or left sadness did not drive the corrected outputs");
+
+    values.fill(0);
+    values[0] = std::numeric_limits<float>::quiet_NaN();
+    values[1] = -std::numeric_limits<float>::infinity();
+    values[2] = std::numeric_limits<float>::infinity();
+    values[3] = 0.5F;
+    values[9] = 0.75F;
+    values[19] = 0.25F;
+    values[10] = -0.5F;
+    values[21] = 0.75F;
+    values[26] = 3;
+    values[32] = -1;
+    packet = sranipatch::encode_osc(values);
+    require(packet[28 + 36] == 127 && packet[28 + 37] == 0 && packet[28 + 38] == 0 && packet[28 + 39] == 0,
+      "Truncation or nonfinite handling is wrong");
+    require(packet[28 + 58] == 0 && packet[28 + 52] == 0 && packet[28 + 64] == 255 && packet[28 + 86] == 255,
+      "Mapped expressions must be clamped after evaluation");
+    values[3] = std::numeric_limits<float>::infinity();
+    values[26] = std::numeric_limits<float>::quiet_NaN();
+    packet = sranipatch::encode_osc(values);
+    require(packet[28 + 36] == 0 && packet[28 + 86] == 0, "Nonfinite mapped expressions must encode zero");
+    must_throw([] { sranipatch::encode_osc({}); });
+    must_throw([] { sranipatch::encode_osc(std::array<float, 36> {}); });
+    must_throw([] { sranipatch::encode_osc(std::array<float, 38> {}); });
   }
 
   void udp_delivery()
@@ -107,14 +164,15 @@ namespace
 #endif
     for (const auto* host : hosts)
     {
-      sranipatch::OscSender sender(host, ntohs(address.sin_port), "/test");
+      sranipatch::OscSender sender(host, ntohs(address.sin_port));
       require(std::string_view(sender.destination().host.data()) == "127.0.0.1" && sender.destination().port == ntohs(address.sin_port) && sender.destination().ready,
         "Sender did not report its resolved numeric destination");
-      const std::array<float, 1> values { 0.25F };
+      std::array<float, 37> values {};
+      values[3] = 0.25F;
       require(sender.send(values), "OSC UDP send failed");
       std::array<char, 256> buffer {};
       const auto received = recv(socket, buffer.data(), static_cast<int>(buffer.size()), 0);
-      const auto expected = sranipatch::encode_osc("/test", values);
+      const auto expected = sranipatch::encode_osc(values);
       require(received >= 0 && static_cast<std::size_t>(received) == expected.size(),
         "UDP packet length differs");
       for (std::size_t i = 0; i < expected.size(); ++i)
@@ -174,17 +232,18 @@ namespace
 
     {
       std::ofstream output(path);
-      output << "# OSC destination\nosc_host = 192.0.2.4\nosc_port=12345\n" "osc_address = /face/lips\n";
+      output << "# OSC destination\nosc_host = 192.0.2.4\nosc_port=12345\n";
     }
     sranipatch::Config config;
     require(sranipatch::load_osc_config(path, config), "Configuration file was not loaded");
-    require(std::string_view(config.osc_host.data()) == "192.0.2.4" && config.osc_port == 12345 && std::string_view(config.osc_address.data()) == "/face/lips",
+    require(std::string_view(config.osc_host.data()) == "192.0.2.4" && config.osc_port == 12345,
       "OSC configuration values differ");
     {
       std::ofstream output(path);
       output << "unknown=value\n";
     }
     must_throw([&] { sranipatch::load_osc_config(path, config); });
+    must_throw([] { sranipatch::parse_osc_config("osc_address=/legacy\n", {}); });
     for (const auto* value : { "", "\"\"", "null" })
     {
       {
@@ -252,7 +311,7 @@ namespace
     write_table("udp", row("1A4E230A", "01", "333"));
     std::filesystem::remove(proc / "123" / "fd" / "4");
     require(sranipatch::steam_link_peer(proc).empty(), "Closed Steam Link socket retained a stale peer");
-    sranipatch::OscSender waiting("", 9337, "/test");
+    sranipatch::OscSender waiting("", 9337);
     require(waiting.send({}), "Waiting for Steam Link should not count as a send failure");
     require(!waiting.destination().ready && !waiting.destination().host[0] && waiting.destination().port == 9337,
       "Unresolved automatic destination must be reported as waiting");
