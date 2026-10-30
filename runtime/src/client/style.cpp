@@ -11,76 +11,120 @@ namespace sranipatch
     auto& style = ImGui::GetStyle();
     auto* colors = style.Colors;
 
-    colors[ImGuiCol_WindowBg] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-    colors[ImGuiCol_ChildBg] = ImVec4(0.14f, 0.15f, 0.17f, 1.00f);
-    colors[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.10f, 0.12f, 0.95f);
-    colors[ImGuiCol_Border] = ImVec4(0.30f, 0.33f, 0.42f, 0.40f);
+    const auto to_normal = 1.0f / 255.0f;
 
-    colors[ImGuiCol_Text] = ImVec4(0.90f, 0.93f, 0.95f, 1.00f);
-    colors[ImGuiCol_TextDisabled] = ImVec4(0.60f, 0.65f, 0.70f, 1.00f);
+    auto transparent = ImVec4(1, 1, 1, 0);
+    auto white = ImVec4(1, 1, 1, 1);
+    auto black = ImVec4(0, 0, 0, 1);
+    auto accent = ImVec4(108 * to_normal, 69 * to_normal, 114 * to_normal, 1);
+    auto accent_light = ImVec4(241 * to_normal, 154 * to_normal, 255 * to_normal, 1);
 
-    colors[ImGuiCol_Header] = ImVec4(0.36f, 0.42f, 0.55f, 0.60f);
-    colors[ImGuiCol_HeaderHovered] = ImVec4(0.44f, 0.50f, 0.68f, 0.80f);
-    colors[ImGuiCol_HeaderActive] = ImVec4(0.46f, 0.55f, 0.75f, 1.00f);
+    auto smoke = ImVec4(0, 0, 0, 0x4D * to_normal);
 
-    colors[ImGuiCol_Button] = ImVec4(0.28f, 0.34f, 0.48f, 0.70f);
-    colors[ImGuiCol_ButtonHovered] = ImVec4(0.36f, 0.45f, 0.65f, 0.85f);
-    colors[ImGuiCol_ButtonActive] = ImVec4(0.40f, 0.50f, 0.70f, 1.00f);
+    auto layer_base =
+#ifdef _WIN32
+      transparent;
+#else
+      ImVec4(0x20 * to_normal, 0x20 * to_normal, 0x20 * to_normal, 1);
+#endif
 
-    colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.22f, 0.28f, 1.00f);
-    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.28f, 0.32f, 0.42f, 1.00f);
-    colors[ImGuiCol_FrameBgActive] = ImVec4(0.32f, 0.38f, 0.50f, 1.00f);
+    auto layer_main = ImVec4(1, 1, 1, 0x09 * to_normal);
+    auto layer_internal = ImVec4(0x3A * to_normal, 0x3A * to_normal, 0x3A * to_normal, 0x4C * to_normal);
 
-    colors[ImGuiCol_Tab] = ImVec4(0.26f, 0.30f, 0.42f, 0.80f);
-    colors[ImGuiCol_TabHovered] = ImVec4(0.36f, 0.42f, 0.58f, 1.00f);
-    colors[ImGuiCol_TabSelected] = ImVec4(0.42f, 0.50f, 0.68f, 1.00f);
-    colors[ImGuiCol_TabDimmed] = ImVec4(0.20f, 0.24f, 0.32f, 0.80f);
-    colors[ImGuiCol_TabDimmedSelected] = ImVec4(0.30f, 0.36f, 0.50f, 1.00f);
+    auto card_fill = ImVec4(1, 1, 1, 0x0D * to_normal);
+    auto card_fill_hover = ImVec4(1, 1, 1, 0x12 * to_normal);
+    auto solid_fill_popup = ImVec4(0x2C * to_normal, 0x2C * to_normal, 0x2C * to_normal, 1);
 
-    colors[ImGuiCol_TitleBg] = ImVec4(0.20f, 0.25f, 0.30f, 1.00f);
-    colors[ImGuiCol_TitleBgActive] = ImVec4(0.25f, 0.30f, 0.40f, 1.00f);
-    colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.10f, 0.12f, 0.15f, 0.75f);
+    auto text_disabled = ImVec4(1, 1, 1, 0x5D * to_normal);
 
-    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.13f, 0.14f, 0.18f, 1.00f);
-    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.25f, 0.30f, 0.38f, 0.60f);
-    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.35f, 0.40f, 0.50f, 0.80f);
-    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.45f, 0.50f, 0.65f, 1.00f);
+    auto control_fill = ImVec4(1, 1, 1, 0x0F * to_normal);
+    auto control_fill_hover = ImVec4(1, 1, 1, 0x15 * to_normal);
+    auto control_fill_press = ImVec4(1, 1, 1, 0x08 * to_normal);
+    auto control_fill_input_active = ImVec4(0x1E * to_normal, 0x1E * to_normal, 0x1E * to_normal, 0xB3 * to_normal);
 
-    colors[ImGuiCol_CheckMark] = ImVec4(0.80f, 0.85f, 1.00f, 1.00f);
-    colors[ImGuiCol_SliderGrab] = ImVec4(0.50f, 0.65f, 0.90f, 1.00f);
-    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.60f, 0.75f, 1.00f, 1.00f);
+    auto control_strong_fill = ImVec4(1, 1, 1, 0x8B * to_normal);
 
-    colors[ImGuiCol_ResizeGrip] = ImVec4(0.30f, 0.40f, 0.50f, 0.60f);
-    colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.40f, 0.50f, 0.60f, 0.80f);
-    colors[ImGuiCol_ResizeGripActive] = ImVec4(0.50f, 0.60f, 0.80f, 1.00f);
+    auto subtle_fill = transparent;
+    auto subtle_fill_hover = control_fill;
+    auto subtle_fill_press = ImVec4(1, 1, 1, 0x0A * to_normal);
 
-    colors[ImGuiCol_Separator] = ImVec4(0.35f, 0.40f, 0.48f, 0.70f);
-    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.50f, 0.60f, 0.72f, 0.90f);
-    colors[ImGuiCol_SeparatorActive] = ImVec4(0.65f, 0.70f, 0.85f, 1.00f);
+    auto popup_stroke = ImVec4(0x75 * to_normal, 0x75 * to_normal, 0x75 * to_normal, 0x34 * to_normal);
+    auto divider_stroke = control_fill_hover;
 
-    colors[ImGuiCol_MenuBarBg] = ImVec4(0.14f, 0.15f, 0.17f, 1.00f);
-    colors[ImGuiCol_DragDropTarget] = ImVec4(0.50f, 0.85f, 1.00f, 0.90f);
+    colors[ImGuiCol_Text] = white;
+    colors[ImGuiCol_TextDisabled] = text_disabled;
+    colors[ImGuiCol_WindowBg] = layer_base;
+    colors[ImGuiCol_ChildBg] = layer_main;
+    colors[ImGuiCol_PopupBg] = solid_fill_popup;
+    colors[ImGuiCol_Border] = popup_stroke;
+    colors[ImGuiCol_BorderShadow] = {};
+    colors[ImGuiCol_FrameBg] = control_fill;
+    colors[ImGuiCol_FrameBgHovered] = control_fill_hover;
+    colors[ImGuiCol_FrameBgActive] = control_fill_input_active;
+    colors[ImGuiCol_TitleBg] = layer_internal;
+    colors[ImGuiCol_TitleBgActive] = layer_internal;
+    colors[ImGuiCol_TitleBgCollapsed] = layer_internal;
+    colors[ImGuiCol_MenuBarBg] = transparent;
+    colors[ImGuiCol_ScrollbarBg] = solid_fill_popup;
+    colors[ImGuiCol_ScrollbarGrab] = control_strong_fill;
+    colors[ImGuiCol_ScrollbarGrabHovered] = control_strong_fill;
+    colors[ImGuiCol_ScrollbarGrabActive] = control_strong_fill;
+    colors[ImGuiCol_CheckMark] = black;
+    colors[ImGuiCol_SliderGrab] = accent_light;
+    colors[ImGuiCol_SliderGrabActive] = accent_light;
+    colors[ImGuiCol_Button] = control_fill;
+    colors[ImGuiCol_ButtonHovered] = control_fill_hover;
+    colors[ImGuiCol_ButtonActive] = control_fill_press;
+    colors[ImGuiCol_Header] = card_fill;
+    colors[ImGuiCol_HeaderHovered] = card_fill_hover;
+    colors[ImGuiCol_HeaderActive] = card_fill_hover;
+    colors[ImGuiCol_Separator] = divider_stroke;
+    colors[ImGuiCol_SeparatorHovered] = accent;
+    colors[ImGuiCol_SeparatorActive] = accent;
+    colors[ImGuiCol_ResizeGrip] = control_strong_fill;
+    colors[ImGuiCol_ResizeGripHovered] = control_strong_fill;
+    colors[ImGuiCol_ResizeGripActive] = control_strong_fill;
+    colors[ImGuiCol_InputTextCursor] = white;
+    colors[ImGuiCol_TabHovered] = subtle_fill_hover;
+    colors[ImGuiCol_Tab] = subtle_fill;
+    colors[ImGuiCol_TabSelected] = subtle_fill_press;
+    colors[ImGuiCol_TabSelectedOverline] = accent_light;
+    colors[ImGuiCol_TabDimmed] = transparent;
+    colors[ImGuiCol_TabDimmedSelected] = control_fill_press;
+    colors[ImGuiCol_TabDimmedSelectedOverline] = accent;
+    colors[ImGuiCol_TableHeaderBg] = control_fill;
+    colors[ImGuiCol_TableBorderStrong] = {};
+    colors[ImGuiCol_TableBorderLight] = {};
+    colors[ImGuiCol_TableRowBg] = {};
+    colors[ImGuiCol_TableRowBgAlt] = {};
+    colors[ImGuiCol_TextLink] = accent_light;
+    colors[ImGuiCol_TextSelectedBg] = accent;
+    colors[ImGuiCol_TreeLines] = {};
+    colors[ImGuiCol_DragDropTarget] = accent_light;
+    colors[ImGuiCol_NavWindowingDimBg] = smoke;
+    colors[ImGuiCol_ModalWindowDimBg] = smoke;
 
-    style.WindowRounding = 8.0f;
-    style.ChildRounding = 6.0f;
-    style.FrameRounding = 5.0f;
-    style.PopupRounding = 6.0f;
-    style.GrabRounding = 4.0f;
-    style.TabRounding = 5.0f;
+    style.WindowRounding = 8;
+    style.ChildRounding = 8;
+    style.FrameRounding = 4;
+    style.PopupRounding = 8;
+    style.GrabRounding = 4;
+    style.TabRounding = 4;
 
-    style.ScrollbarPadding = 3.0f;
-    style.ScrollbarRounding = 3.0f;
-    style.ScrollbarSize = 20.0f;
+    style.ScrollbarPadding = 4;
+    style.ScrollbarRounding = 4;
+    style.ScrollbarSize = 20;
 
-    style.WindowBorderSize = 0.0f;
-    style.FrameBorderSize = 0.0f;
-    style.PopupBorderSize = 1.0f;
+    style.WindowBorderSize = 0;
+    style.FrameBorderSize = 1;
+    style.PopupBorderSize = 1;
 
     style.WindowPadding = ImVec2(16, 16);
-    style.FramePadding = ImVec2(10, 6);
-    style.ItemSpacing = ImVec2(10, 10);
-    style.ItemInnerSpacing = ImVec2(6, 4);
-    style.IndentSpacing = 20.0f;
+    style.FramePadding = ImVec2(8, 8);
+    style.ItemSpacing = ImVec2(8, 8);
+    style.ItemInnerSpacing = ImVec2(8, 8);
+
+    style.IndentSpacing = 20;
 
     ImPlot::StyleColorsAuto();
     auto& plot_style = ImPlot::GetStyle();

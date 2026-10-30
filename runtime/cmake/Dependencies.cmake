@@ -184,7 +184,7 @@ function(sranipatch_add_gui)
     FetchContent_Declare(
         imgui
         GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG v1.93.0
+        GIT_TAG v1.92.3
     )
     FetchContent_MakeAvailable(glfw imgui)
     find_package(OpenGL REQUIRED)
@@ -211,7 +211,7 @@ function(sranipatch_add_gui)
     FetchContent_Declare(
         implot
         GIT_REPOSITORY https://github.com/epezent/implot.git
-        GIT_TAG 3a8df61cbec4b5b008fcbd0bc2357cc0a61e8c79
+        GIT_TAG v1.1
     )
     FetchContent_MakeAvailable(implot)
     add_library(

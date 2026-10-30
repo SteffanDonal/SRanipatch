@@ -235,11 +235,7 @@ namespace sranipatch
           windows_surface->bind_target(width, height);
 #endif
         glViewport(0, 0, width, height);
-#ifdef _WIN32
         glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
-#else
-        glClearColor(0.08F, 0.09F, 0.11F, 1.0F);
-#endif
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         if (overlay)

@@ -171,13 +171,17 @@ namespace
 
   void stale_overlay(const char* label)
   {
+    const auto style = ImGui::GetStyle();
     const auto min = ImGui::GetItemRectMin();
     const auto max = ImGui::GetItemRectMax();
     auto* draw = ImGui::GetWindowDrawList();
     const auto size = ImGui::CalcTextSize(label);
+    const auto fill_min = ImVec2(min.x + style.FramePadding.x, min.y + style.FramePadding.y);
+    const auto fill_max = ImVec2(fill_min.x + size.x + style.ItemSpacing.x * 2, fill_min.y + size.y + style.ItemSpacing.y * 2);
     draw->PushClipRect(min, max, true);
-    draw->AddRectFilled(min, ImVec2(min.x + size.x + 12, min.y + size.y + 8), ImGui::GetColorU32(ImGuiCol_ChildBg), ImGui::GetStyle().FrameRounding);
-    draw->AddText(ImVec2(min.x + 6, min.y + 4), ImGui::GetColorU32(ImGuiCol_Text), label);
+    draw->AddRectFilled(fill_min, fill_max, ImGui::GetColorU32(ImGuiCol_ModalWindowDimBg), style.FrameRounding);
+    draw->AddRect(fill_min, fill_max, ImGui::GetColorU32(ImGuiCol_Border), style.FrameRounding);
+    draw->AddText(ImVec2(fill_min.x + style.ItemSpacing.x, fill_min.y + style.ItemSpacing.y), ImGui::GetColorU32(ImGuiCol_Text), label);
     draw->PopClipRect();
   }
 
@@ -212,7 +216,7 @@ namespace
         ImGui::SetNextWindowPos(viewport->WorkPos);
         ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGui::Begin("Server", nullptr,
-          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground);
+          ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
         if (ImGui::BeginTable("dashboard", 2, ImGuiTableFlags_Resizable))
         {
           ImGui::TableNextColumn();
