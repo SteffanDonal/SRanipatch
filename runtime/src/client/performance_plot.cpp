@@ -207,7 +207,10 @@ namespace sranipatch
       ImPlot::EndPlot();
     }
 
-    ImGui::Indent(26);
+    ImGui::BeginGroup();
+    ImGui::Indent();
+    ImGui::PushItemWidth(-ImGui::GetStyle().IndentSpacing);
+
     if (ImGui::BeginTable("frame-counters", 3, ImGuiTableFlags_SizingStretchSame))
     {
       ImGui::TableSetupColumn("Captured", ImGuiTableColumnFlags_WidthStretch, 3);
@@ -225,6 +228,7 @@ namespace sranipatch
 
       ImGui::EndTable();
     }
-    ImGui::Unindent();
+
+    ImGui::EndGroup();
   }
 }  // namespace sranipatch
