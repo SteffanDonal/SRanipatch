@@ -98,4 +98,4 @@ namespace sranipatch
     }
     return {};
   }
-}  // namespace sranipatch
+}

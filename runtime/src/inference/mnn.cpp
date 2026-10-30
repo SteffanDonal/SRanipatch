@@ -156,4 +156,4 @@ namespace sranipatch
   {
     return std::make_unique<Mnn>(config, precision);
   }
-}  // namespace sranipatch
+}

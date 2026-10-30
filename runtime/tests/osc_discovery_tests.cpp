@@ -32,7 +32,7 @@ namespace sranipatch
     ++lookups;
     return discovered_peer;
   }
-}  // namespace sranipatch
+}
 
 // NOLINTNEXTLINE(bugprone-exception-escape): Exceptions from the body are caught below.
 int main()

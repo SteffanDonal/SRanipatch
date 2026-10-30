@@ -9,4 +9,4 @@ namespace sranipatch
   float windows_caption_height(GLFWwindow* window);
   ImFont* load_windows_caption_font();
   void draw_windows_caption(GLFWwindow* window, ImFont* font);
-}  // namespace sranipatch
+}

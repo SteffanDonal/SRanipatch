@@ -31,5 +31,5 @@ namespace sranipatch
     std::uint64_t started_at_ {};
     double elapsed_ {};
   };
-}  // namespace sranipatch
+}
 #endif

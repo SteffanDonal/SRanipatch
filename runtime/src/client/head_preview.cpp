@@ -235,4 +235,4 @@ void main() {
   {
     return impl_->render(parameters, width, height);
   }
-}  // namespace sranipatch
+}

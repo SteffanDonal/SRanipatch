@@ -43,4 +43,4 @@ namespace sranipatch
         dest[x] = row[static_cast<std::size_t>(x) * 2];
     }
   }
-}  // namespace sranipatch
+}

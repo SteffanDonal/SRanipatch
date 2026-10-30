@@ -265,4 +265,4 @@ namespace sranipatch
     frame.sequence = preview.sequence;
     return true;
   }
-}  // namespace sranipatch
+}

@@ -190,4 +190,4 @@ namespace sranipatch
           component /= std::sqrt(length);
     }
   }
-}  // namespace sranipatch
+}

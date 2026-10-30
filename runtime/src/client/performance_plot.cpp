@@ -231,4 +231,4 @@ namespace sranipatch
 
     ImGui::EndGroup();
   }
-}  // namespace sranipatch
+}

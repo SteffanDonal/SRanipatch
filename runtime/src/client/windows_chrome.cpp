@@ -56,7 +56,7 @@ namespace sranipatch
         hovered,
         pressed
       };
-    }  // namespace caption
+    }
 
     int resize_border(HWND window)
     {
@@ -338,4 +338,4 @@ namespace sranipatch
     ImGui::End();
     ImGui::PopStyleVar(3);
   }
-}  // namespace sranipatch
+}

@@ -49,4 +49,4 @@ namespace sranipatch
     std::chrono::steady_clock::time_point changed_at_ {};
     bool pending_ {};
   };
-}  // namespace sranipatch
+}

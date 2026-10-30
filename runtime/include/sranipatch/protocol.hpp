@@ -111,4 +111,4 @@ namespace sranipatch
   static_assert(sizeof(SharedBlock) == 167424);
   static_assert(offsetof(SharedBlock, status) == 16);
   static_assert(offsetof(SharedBlock, preview) == 7408);
-}  // namespace sranipatch
+}

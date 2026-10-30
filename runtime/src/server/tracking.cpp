@@ -112,4 +112,4 @@ namespace sranipatch
     status.frame_age_ms = static_cast<float>(end - frame.timestamp_ns) / 1.0e6F;
     return true;
   }
-}  // namespace sranipatch
+}

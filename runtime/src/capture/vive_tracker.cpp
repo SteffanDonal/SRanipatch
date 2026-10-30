@@ -114,4 +114,4 @@ namespace sranipatch
     commands.probe();
     commands.stream(false);
   }
-}  // namespace sranipatch
+}

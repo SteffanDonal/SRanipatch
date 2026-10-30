@@ -33,4 +33,4 @@ namespace sranipatch
   };
 
   void copy_yuyv_luma(const std::uint8_t* source, std::ptrdiff_t stride, Frame& frame);
-}  // namespace sranipatch
+}

@@ -176,4 +176,4 @@ namespace sranipatch
     if (vr::VROverlay()->WaitFrameSync(20) != vr::VROverlayError_None)
       std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
-}  // namespace sranipatch
+}

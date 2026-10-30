@@ -31,4 +31,4 @@ namespace sranipatch
     ObservationSnapshot snapshot_;
     std::uint64_t retry_at_ {}, camera_at_ {}, tracking_at_ {};
   };
-}  // namespace sranipatch
+}

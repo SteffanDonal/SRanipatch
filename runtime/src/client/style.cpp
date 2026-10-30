@@ -87,4 +87,4 @@ namespace sranipatch
     plot_style.Colormap = ImPlotColormap_Paired;
     plot_style.PlotPadding = { 0, 0 };
   }
-}  // namespace sranipatch
+}

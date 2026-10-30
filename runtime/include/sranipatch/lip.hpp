@@ -73,4 +73,4 @@ namespace sranipatch
     std::array<float, 33> smoothed_ {};
     std::array<float, 33> smoothing_weights_ {};
   };
-}  // namespace sranipatch
+}

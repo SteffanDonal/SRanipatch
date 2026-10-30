@@ -522,4 +522,4 @@ namespace sranipatch
   {
     impl_->present();
   }
-}  // namespace sranipatch
+}

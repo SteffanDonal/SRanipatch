@@ -78,4 +78,4 @@ namespace sranipatch
     apply(observed_);
     return true;
   }
-}  // namespace sranipatch
+}

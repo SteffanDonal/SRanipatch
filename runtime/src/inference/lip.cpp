@@ -165,4 +165,4 @@ namespace sranipatch
     output[36] = output[27] * output[30];
     return output;
   }
-}  // namespace sranipatch
+}

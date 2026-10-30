@@ -329,4 +329,4 @@ namespace sranipatch
   {
     impl_->run(draw, interrupted);
   }
-}  // namespace sranipatch
+}

@@ -93,4 +93,4 @@ namespace sranipatch
     snapshot_.tracking_fresh = snapshot_.available && recent(tracking_at_, now, freshness_ns);
     return snapshot_;
   }
-}  // namespace sranipatch
+}

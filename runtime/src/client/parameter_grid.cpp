@@ -188,4 +188,4 @@ namespace sranipatch
       ImGui::EndTable();
     }
   }
-}  // namespace sranipatch
+}

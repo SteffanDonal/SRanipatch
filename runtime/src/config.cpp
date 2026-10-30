@@ -112,4 +112,4 @@ namespace sranipatch
     config = parse(input, config);
     return true;
   }
-}  // namespace sranipatch
+}

@@ -260,7 +260,7 @@ namespace sranipatch
     ++model_loads;
     return std::make_unique<Model>();
   }
-}  // namespace sranipatch
+}
 
 // NOLINTNEXTLINE(bugprone-exception-escape): Exceptions from the body are caught below.
 int main()

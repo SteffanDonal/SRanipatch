@@ -19,4 +19,4 @@ namespace sranipatch
 
   void enable_vive_tracker(TrackerExtension& extension);
   void disable_vive_tracker(TrackerExtension& extension);
-}  // namespace sranipatch
+}

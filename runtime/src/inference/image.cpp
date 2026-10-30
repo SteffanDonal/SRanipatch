@@ -87,4 +87,4 @@ namespace sranipatch
         dest[x] = median5(rows[0][x], rows[1][x], rows[2][x], rows[3][x], rows[4][x]);
     }
   }
-}  // namespace sranipatch
+}

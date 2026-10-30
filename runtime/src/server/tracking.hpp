@@ -21,4 +21,4 @@ namespace sranipatch
     std::uint64_t last_sequence_ {};
     std::unique_ptr<CaptureRun> capture_;
   };
-}  // namespace sranipatch
+}

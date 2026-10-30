@@ -24,4 +24,4 @@ namespace sranipatch
 
   std::unique_ptr<Inference> open_lip_mnn(const Config& config,
     InferencePrecision precision = InferencePrecision::normal);
-}  // namespace sranipatch
+}

@@ -38,4 +38,4 @@ namespace sranipatch
     std::vector<std::uint32_t> indices_;
     std::array<std::vector<HeadVertex>, lip_parameter_count> targets_;
   };
-}  // namespace sranipatch
+}

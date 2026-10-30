@@ -657,4 +657,4 @@ namespace sranipatch
     DeviceArrival arrival;
     arrival.wait(std::move(stop), new_arrival_required);
   }
-}  // namespace sranipatch
+}

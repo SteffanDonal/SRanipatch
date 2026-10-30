@@ -257,4 +257,4 @@ namespace sranipatch
 #endif
     return sent >= 0 && static_cast<std::size_t>(sent) == impl_->packet.size();
   }
-}  // namespace sranipatch
+}
