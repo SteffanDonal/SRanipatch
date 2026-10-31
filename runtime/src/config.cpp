@@ -77,6 +77,12 @@ namespace sranipatch
           else
             checked_text(key, parsed.osc_host, value);
         }
+        else if (key == "output_vrc_native")
+        {
+          if (value != "true" && value != "false")
+            throw std::runtime_error("output_vrc_native must be true or false");
+          parsed.output_vrc_native = value == "true";
+        }
         else if (key == "osc_port")
         {
           std::uint32_t port {};

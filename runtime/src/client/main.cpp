@@ -270,7 +270,8 @@ namespace
               }
               if (status.osc_failures > 0)
                 ImGui::Text("Errors: %llu", static_cast<unsigned long long>(status.osc_failures));
-              ImGui::TextWrapped("%.*s", static_cast<int>(sranipatch::face_tracking_address.size()), sranipatch::face_tracking_address.data());
+              const auto address = sranipatch::osc_address(status.config.output_vrc_native != 0);
+              ImGui::TextWrapped("%.*s", static_cast<int>(address.size()), address.data());
             }
 
             ImGui::EndTable();

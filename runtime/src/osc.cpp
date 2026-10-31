@@ -1,6 +1,7 @@
 #include "sranipatch/osc.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -21,8 +22,36 @@ namespace sranipatch
 {
   namespace
   {
-    void encode_into(std::vector<std::uint8_t>& packet, std::span<const float> s)
+    void encode_legacy_into(std::vector<std::uint8_t>& packet, std::span<const float> values)
     {
+      if (values.size() > max_parameters)
+        throw std::runtime_error("OSC requires at most 128 floats");
+      packet.assign(legacy_osc_address.begin(), legacy_osc_address.end());
+      packet.push_back(0);
+      while (packet.size() % 4 != 0)
+        packet.push_back(0);
+      packet.push_back(',');
+      packet.insert(packet.end(), values.size(), 'f');
+      packet.push_back(0);
+      while (packet.size() % 4 != 0)
+        packet.push_back(0);
+      for (const float value : values)
+      {
+        const auto bits = std::bit_cast<std::uint32_t>(value);
+        packet.push_back(static_cast<std::uint8_t>(bits >> 24));
+        packet.push_back(static_cast<std::uint8_t>(bits >> 16));
+        packet.push_back(static_cast<std::uint8_t>(bits >> 8));
+        packet.push_back(static_cast<std::uint8_t>(bits));
+      }
+    }
+
+    void encode_into(std::vector<std::uint8_t>& packet, std::span<const float> s, bool output_vrc_native)
+    {
+      if (!output_vrc_native)
+      {
+        encode_legacy_into(packet, s);
+        return;
+      }
       if (s.size() != 37)
         throw std::runtime_error("Face tracking OSC requires exactly 37 lip parameters");
 
@@ -77,10 +106,10 @@ namespace sranipatch
     }
   }  // namespace
 
-  std::vector<std::uint8_t> encode_osc(std::span<const float> values)
+  std::vector<std::uint8_t> encode_osc(std::span<const float> values, bool output_vrc_native)
   {
     std::vector<std::uint8_t> packet;
-    encode_into(packet, values);
+    encode_into(packet, values, output_vrc_native);
     return packet;
   }
 
@@ -107,6 +136,7 @@ namespace sranipatch
     }
 #endif
     std::vector<std::uint8_t> packet;
+    bool output_vrc_native {};
     OscDestination destination;
     void connect_host(const std::string& host, std::uint16_t port);
 #ifndef _WIN32
@@ -150,7 +180,7 @@ namespace sranipatch
 #endif
   };
 
-  OscSender::OscSender(const std::string& host, std::uint16_t port)
+  OscSender::OscSender(const std::string& host, std::uint16_t port, bool output_vrc_native)
     : impl_(std::make_unique<Impl>())
   {
 #ifdef _WIN32
@@ -160,7 +190,8 @@ namespace sranipatch
     impl_->winsock = true;
 #endif
     impl_->destination.port = port;
-    impl_->packet.reserve(132);
+    impl_->output_vrc_native = output_vrc_native;
+    impl_->packet.reserve(1024);
 #ifdef _WIN32
     impl_->connect_host(host.empty() ? "127.0.0.1" : host, port);
 #else
@@ -248,7 +279,7 @@ namespace sranipatch
     if (impl_->socket < 0)
       return true;  // Waiting for Steam Link is not a failed send.
 #endif
-    encode_into(impl_->packet, values);
+    encode_into(impl_->packet, values, impl_->output_vrc_native);
 #ifdef _WIN32
     const auto sent = ::send(impl_->socket, reinterpret_cast<const char*>(impl_->packet.data()),
       static_cast<int>(impl_->packet.size()), 0);

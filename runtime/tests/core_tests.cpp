@@ -68,6 +68,15 @@ namespace
 
   void osc_encoding()
   {
+    const std::array<float, 3> legacy_values { 0.0F, 1.0F, -0.5F };
+    const std::vector<std::uint8_t> legacy_packet {
+      '/', 's', 'r', 'a', 'n', 'i', 'p', 'a', 't', 'c', 'h', '/', 'p', 'a', 'r', 'a', 'm', 'e', 't', 'e', 'r', 's', 0, 0,
+      ',', 'f', 'f', 'f', 0, 0, 0, 0,
+      0, 0, 0, 0, 0x3f, 0x80, 0, 0, 0xbf, 0, 0, 0
+    };
+    require(sranipatch::encode_osc(legacy_values) == legacy_packet, "Legacy OSC framing or float bytes differ");
+    require(sranipatch::encode_osc(std::array<float, 128> {}).size() == 668, "Legacy maximum parameter count rejected");
+    must_throw([] { sranipatch::encode_osc(std::array<float, 129> {}); });
     std::array<float, 37> values {};
     const std::vector<std::uint8_t> header {
       '/', 't', 'r', 'a', 'c', 'k', 'i', 'n', 'g', '/', 'f', 'a', 'c', 'e', '/', 'v', '1', 0, 0, 0,
@@ -75,7 +84,7 @@ namespace
     };
     auto expected = header;
     expected.resize(132, 0);
-    require(sranipatch::encode_osc(values) == expected, "Neutral face OSC framing or padding is wrong");
+    require(sranipatch::encode_osc(values, true) == expected, "Neutral face OSC framing or padding is wrong");
 
     // Distinct inputs exercise the complete mapping, including unused tongue morphs.
     for (std::size_t i = 0; i < values.size(); ++i)
@@ -93,18 +102,18 @@ namespace
       111, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
     };
     std::copy(payload.begin(), payload.end(), expected.begin() + 28);
-    require(sranipatch::encode_osc(values) == expected, "Face tracking key mapping differs");
+    require(sranipatch::encode_osc(values, true) == expected, "Face tracking key mapping differs");
 
     values.fill(0);
     values[9] = 1;
     values[14] = 1;
-    auto packet = sranipatch::encode_osc(values);
+    auto packet = sranipatch::encode_osc(values, true);
     require(packet[28 + 50] == 255 && packet[28 + 52] == 0 && packet[28 + 76] == 255 && packet[28 + 77] == 0,
       "Upper overturn or right sadness leaked into lower or left outputs");
     values.fill(0);
     values[10] = 1;
     values[15] = 1;
-    packet = sranipatch::encode_osc(values);
+    packet = sranipatch::encode_osc(values, true);
     require(packet[28 + 50] == 0 && packet[28 + 52] == 255 && packet[28 + 76] == 0 && packet[28 + 77] == 255,
       "Lower overturn or left sadness did not drive the corrected outputs");
 
@@ -119,18 +128,18 @@ namespace
     values[21] = 0.75F;
     values[26] = 3;
     values[32] = -1;
-    packet = sranipatch::encode_osc(values);
+    packet = sranipatch::encode_osc(values, true);
     require(packet[28 + 36] == 127 && packet[28 + 37] == 0 && packet[28 + 38] == 0 && packet[28 + 39] == 0,
       "Truncation or nonfinite handling is wrong");
     require(packet[28 + 58] == 0 && packet[28 + 52] == 0 && packet[28 + 64] == 255 && packet[28 + 86] == 255,
       "Mapped expressions must be clamped after evaluation");
     values[3] = std::numeric_limits<float>::infinity();
     values[26] = std::numeric_limits<float>::quiet_NaN();
-    packet = sranipatch::encode_osc(values);
+    packet = sranipatch::encode_osc(values, true);
     require(packet[28 + 36] == 0 && packet[28 + 86] == 0, "Nonfinite mapped expressions must encode zero");
-    must_throw([] { sranipatch::encode_osc({}); });
-    must_throw([] { sranipatch::encode_osc(std::array<float, 36> {}); });
-    must_throw([] { sranipatch::encode_osc(std::array<float, 38> {}); });
+    must_throw([] { sranipatch::encode_osc({}, true); });
+    must_throw([] { sranipatch::encode_osc(std::array<float, 36> {}, true); });
+    must_throw([] { sranipatch::encode_osc(std::array<float, 38> {}, true); });
   }
 
   void udp_delivery()
@@ -163,21 +172,22 @@ namespace
     const std::array hosts { "127.0.0.1" };
 #endif
     for (const auto* host : hosts)
-    {
-      sranipatch::OscSender sender(host, ntohs(address.sin_port));
-      require(std::string_view(sender.destination().host.data()) == "127.0.0.1" && sender.destination().port == ntohs(address.sin_port) && sender.destination().ready,
-        "Sender did not report its resolved numeric destination");
-      std::array<float, 37> values {};
-      values[3] = 0.25F;
-      require(sender.send(values), "OSC UDP send failed");
-      std::array<char, 256> buffer {};
-      const auto received = recv(socket, buffer.data(), static_cast<int>(buffer.size()), 0);
-      const auto expected = sranipatch::encode_osc(values);
-      require(received >= 0 && static_cast<std::size_t>(received) == expected.size(),
-        "UDP packet length differs");
-      for (std::size_t i = 0; i < expected.size(); ++i)
-        require(static_cast<std::uint8_t>(buffer[i]) == expected[i], "UDP packet data differs");
-    }
+      for (const bool native : { false, true })
+      {
+        sranipatch::OscSender sender(host, ntohs(address.sin_port), native);
+        require(std::string_view(sender.destination().host.data()) == "127.0.0.1" && sender.destination().port == ntohs(address.sin_port) && sender.destination().ready,
+          "Sender did not report its resolved numeric destination");
+        std::array<float, 37> values {};
+        values[3] = 0.25F;
+        require(sender.send(values), "OSC UDP send failed");
+        std::array<char, 256> buffer {};
+        const auto received = recv(socket, buffer.data(), static_cast<int>(buffer.size()), 0);
+        const auto expected = sranipatch::encode_osc(values, native);
+        require(received >= 0 && static_cast<std::size_t>(received) == expected.size(),
+          "UDP packet length differs");
+        for (std::size_t i = 0; i < expected.size(); ++i)
+          require(static_cast<std::uint8_t>(buffer[i]) == expected[i], "UDP packet data differs");
+      }
 #ifdef _WIN32
     closesocket(socket);
     WSACleanup();

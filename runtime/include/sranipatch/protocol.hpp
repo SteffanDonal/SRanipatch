@@ -10,7 +10,7 @@
 namespace sranipatch
 {
   inline constexpr std::uint32_t protocol_magic = 0x53525031;
-  inline constexpr std::uint32_t protocol_version = 10;
+  inline constexpr std::uint32_t protocol_version = 11;
   inline constexpr std::size_t max_parameters = 128;
   inline constexpr std::uint32_t capture_width = 400;
   inline constexpr std::uint32_t capture_height = 400;
@@ -56,6 +56,7 @@ namespace sranipatch
     std::uint32_t osc_port { 9337 };
     float mean { 0.0F };
     float scale { 1.0F / 255.0F };
+    std::uint32_t output_vrc_native {};
   };
 
   struct OscDestination
@@ -105,10 +106,10 @@ namespace sranipatch
   static_assert(std::is_trivially_copyable_v<SharedBlock>);
   static_assert(std::is_standard_layout_v<SharedBlock>);
   static_assert(sizeof(Parameter) == 52);
-  static_assert(sizeof(Config) == 336);
+  static_assert(sizeof(Config) == 340);
   static_assert(sizeof(OscDestination) == 72);
-  static_assert(sizeof(Status) == 7392);
-  static_assert(sizeof(SharedBlock) == 167424);
+  static_assert(sizeof(Status) == 7400);
+  static_assert(sizeof(SharedBlock) == 167432);
   static_assert(offsetof(SharedBlock, status) == 16);
-  static_assert(offsetof(SharedBlock, preview) == 7408);
+  static_assert(offsetof(SharedBlock, preview) == 7416);
 }

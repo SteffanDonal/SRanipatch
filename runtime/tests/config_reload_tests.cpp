@@ -35,6 +35,27 @@ namespace
     }
   };
 
+  void output_mode_reloads_and_resets()
+  {
+    ConfigFile file;
+    file.write("osc_host=127.0.0.1\n");
+    sranipatch::LiveOscConfig live(file.path, {}, {});
+    require(live.config().output_vrc_native == 0, "Native output must default to false");
+    auto now = std::chrono::steady_clock::now();
+    for (const auto* setting : { "true", "false", "true", "" })
+    {
+      const auto text = std::string("osc_host=127.0.0.1\n")
+        + (*setting ? std::string("output_vrc_native=") + setting + "\n" : "");
+      auto* previous = &live.sender();
+      file.write(text);
+      require(!live.poll(now), "Mode change must be debounced");
+      require(live.poll(now + 300ms), "Mode change was not applied");
+      require((live.config().output_vrc_native != 0) == (std::string_view(setting) == "true"), "Wrong output mode after reload");
+      require(&live.sender() != previous, "Mode-only change did not replace sender");
+      now += 1s;
+    }
+  }
+
   void saved_config_replaces_destination_after_debounce()
   {
     ConfigFile file;
@@ -59,7 +80,7 @@ namespace
     sranipatch::LiveOscConfig live(file.path, defaults, {});
     auto now = std::chrono::steady_clock::now();
     auto* original = &live.sender();
-    for (const auto* invalid : { "osc_port=0\n", "osc_host=not-an-ip\n", "unknown=value\n" })
+    for (const auto* invalid : { "osc_port=0\n", "osc_host=not-an-ip\n", "unknown=value\n", "output_vrc_native=yes\n", "output_vrc_native=\n" })
     {
       file.write(invalid);
       live.poll(now);
@@ -188,6 +209,7 @@ int main()
 {
   try
   {
+    output_mode_reloads_and_resets();
     saved_config_replaces_destination_after_debounce();
     failed_reload_keeps_working_output_and_recovers();
     removed_settings_restore_defaults_and_cli_overrides_win();
