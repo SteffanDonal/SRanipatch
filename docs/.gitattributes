@@ -1,0 +1,6 @@
+* text=auto
+*.cpp text eol=lf
+*.hpp text eol=lf
+*.cmake text eol=lf
+*.blend filter=lfs diff=lfs merge=lfs -text
+*.glb filter=lfs diff=lfs merge=lfs -text

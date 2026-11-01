@@ -21,7 +21,9 @@ namespace sranipatch
     ~ClientUi();
     ClientUi(const ClientUi&) = delete;
     ClientUi& operator=(const ClientUi&) = delete;
-    void run(const std::function<void()>& draw, const volatile std::sig_atomic_t& interrupted);
+    void run(const std::function<void()>& draw, const volatile std::sig_atomic_t& interrupted,
+      const std::function<bool()>& stop_requested = {});
+    bool closed_by_user() const;
 
   private:
     struct Impl;

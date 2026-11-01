@@ -1,0 +1,13 @@
+{
+  "driver_sranipatch": {
+    "enable": true,
+    "ipc": "sranipatch",
+    "runServer": true,
+    "serverManaged": true,
+    "showOverlay": false,
+    "retryServer": false,
+    "restartServer": false,
+    "status": "Waiting for SRanipatch driver",
+    "statusState": 0
+  }
+}

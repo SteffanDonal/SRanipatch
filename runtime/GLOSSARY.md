@@ -6,6 +6,10 @@
 
 **Server session**: One run of the tracking server. Tracking data from different sessions is distinct.
 
+**Managed server**: A tracking server whose lifetime belongs to the current SteamVR session.
+
+**Manual server**: A tracking server whose lifetime remains under the user's control, including while connected to SteamVR.
+
 **Server availability**: Whether the tracking server is alive and available to the dashboard, independently of camera activity.
 
 **Tracking freshness**: Whether displayed tracking data reflects recent camera activity, independently of server availability.

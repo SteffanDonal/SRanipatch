@@ -1,35 +1,12 @@
 #!/bin/sh
 
-# Run both processes as one job, presenting the client as a SteamVR dashboard overlay.
+# Start a manually owned tracking server on the performance CPU cluster.
 set -u
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 server="$root/build/linux-release/sranipatch-server"
-client="$root/build/linux-release/sranipatch-client"
-server_pid=
-client_pid=
-
-cleanup() {
-    status=$?
-    trap - EXIT HUP INT TERM
-    if [ -n "$client_pid" ]; then
-        kill -TERM "$client_pid" 2>/dev/null || true
-        wait "$client_pid" 2>/dev/null || true
-    fi
-    if [ -n "$server_pid" ]; then
-        kill -TERM "$server_pid" 2>/dev/null || true
-        wait "$server_pid" 2>/dev/null || true
-    fi
-    exit "$status"
-}
-
-trap cleanup EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
-
-if [ ! -x "$server" ] || [ ! -x "$client" ]; then
-    echo "Build sranipatch-server and sranipatch-client in build/linux-release first" >&2
+if [ ! -x "$server" ]; then
+    echo "Build sranipatch-server in build/linux-release first" >&2
     exit 1
 fi
 if ! command -v taskset >/dev/null 2>&1; then
@@ -37,16 +14,4 @@ if ! command -v taskset >/dev/null 2>&1; then
     exit 1
 fi
 
-DISPLAY=${DISPLAY:-:0}
-XDG_SESSION_TYPE=x11
-export DISPLAY
-export XDG_SESSION_TYPE
-unset WAYLAND_DISPLAY
-
-cd "$root"
-taskset -c 2-4 "$server" --model ../assets/models/lip_model.mnn "$@" &
-server_pid=$!
-"$client" --overlay &
-client_pid=$!
-wait "$client_pid"
-exit $?
+exec taskset -c 2-4 "$server" "$@"

@@ -4,6 +4,7 @@
 #include "parameter_grid.hpp"
 #include "performance_plot.hpp"
 #include "sranipatch/osc.hpp"
+#include "sranipatch/process.hpp"
 
 #include <glad/gl.h>
 #include <imgui.h>
@@ -68,6 +69,7 @@ namespace
   struct Options
   {
     std::string ipc { "sranipatch" };
+    std::string lifetime;
     std::filesystem::path head { default_asset_path("head.glb") };
     bool help {};
     sranipatch::Presentation presentation { sranipatch::Presentation::desktop };
@@ -93,6 +95,8 @@ namespace
         throw std::runtime_error("Missing client option value");
       if (key == "--ipc")
         result.ipc = argv[i];
+      else if (key == "--lifetime")
+        result.lifetime = argv[i];
       else if (key == "--head")
         result.head = argv[i];
       else
@@ -187,6 +191,9 @@ namespace
 
   int run(const Options& options)
   {
+    sranipatch::ProcessLifetime lifetime;
+    if (!options.lifetime.empty())
+      lifetime = sranipatch::ProcessLifetime(options.lifetime);
     sranipatch::ClientUi ui(default_asset_path("Quicksand-Medium.ttf"), options.presentation);
     sranipatch::Observation observation(options.ipc);
     sranipatch::PerformancePlot performance;
@@ -357,9 +364,10 @@ namespace
 
         ImGui::End();
       },
-      interrupted
+      interrupted,
+      [&] { return lifetime.stop_requested(); }
     );
-    return 0;
+    return ui.closed_by_user() && !options.lifetime.empty() ? 2 : 0;
   }
 }  // namespace
 
@@ -367,11 +375,13 @@ namespace
 // NOLINTNEXTLINE(bugprone-exception-escape)
 int client_main(int argc, char** argv)
 {
+  bool managed {};
   try
   {
     std::signal(SIGINT, interrupt);
     std::signal(SIGTERM, interrupt);
     const auto parsed = options(argc, argv);
+    managed = !parsed.lifetime.empty();
     if (parsed.help)
     {
       std::cout << "sranipatch-client [--ipc NAME] [--head PATH] [--overlay]\n";
@@ -382,8 +392,12 @@ int client_main(int argc, char** argv)
   catch (const std::exception& error)
   {
 #ifdef _WIN32
-    MessageBoxA(nullptr, error.what(), "SRanipatch client", MB_OK | MB_ICONERROR);
+    if (!managed)
+      MessageBoxA(nullptr, error.what(), "SRanipatch client", MB_OK | MB_ICONERROR);
+    else
+      std::cerr << error.what() << '\n';
 #else
+    static_cast<void>(managed);
     std::cerr << error.what() << '\n';
 #endif
     return 1;

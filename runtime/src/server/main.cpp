@@ -1,8 +1,10 @@
+#include "runtime.hpp"
 #include "sranipatch/config.hpp"
 #include "sranipatch/inference.hpp"
 #include "sranipatch/ipc.hpp"
 #include "sranipatch/live_osc_config.hpp"
 #include "sranipatch/osc.hpp"
+#include "sranipatch/process.hpp"
 #include "tracking.hpp"
 
 #include <charconv>
@@ -33,6 +35,7 @@ namespace
     sranipatch::OscOverrides osc_overrides;
     sranipatch::InferencePrecision precision { default_precision };
     std::string ipc { "sranipatch" };
+    std::string lifetime;
     bool help {};
   };
 
@@ -56,7 +59,8 @@ namespace
   Options parse(int argc, char** argv)
   {
     Options options;
-    sranipatch::set_text(options.config.model, "../assets/models/lip_model.mnn");
+    const auto model = (sranipatch::executable_directory() / "models/lip_model.mnn").u8string();
+    argument_text(options.config.model, std::string(model.begin(), model.end()));
     for (int i = 1; i < argc; ++i)
     {
       const std::string_view key(argv[i]);
@@ -72,6 +76,8 @@ namespace
         argument_text(options.config.model, value);
       else if (key == "--ipc")
         options.ipc = value;
+      else if (key == "--lifetime")
+        options.lifetime = value;
       else if (key == "--threads")
         options.config.threads = number(value, 1, 64);
       else if (key == "--precision")
@@ -101,16 +107,20 @@ namespace
 
   void usage()
   {
-    std::cout << "sranipatch-server [options]\n" "  --model PATH      Lip MNN graph (default ../assets/models/lip_model.mnn)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
+    std::cout << "sranipatch-server [options]\n" "  --model PATH      Lip MNN graph (default models/lip_model.mnn)\n" "  --threads N       MNN CPU threads (default 2)\n" "  --precision MODE  MNN CPU precision: normal or low (default "
               << precision_name(default_precision)
               << ")\n" "  --osc-host IP --osc-port N\n" "  --ipc NAME        Shared-memory channel (default sranipatch)\n";
   }
 
   int serve(const Options& options)
   {
+    sranipatch::ProcessLifetime lifetime;
+    if (!options.lifetime.empty())
+      lifetime = sranipatch::ProcessLifetime(options.lifetime);
     const auto config_path = sranipatch::default_config_path();
     sranipatch::LiveOscConfig live_config(config_path, options.config, options.osc_overrides);
     sranipatch::SharedMemory ipc(options.ipc, sranipatch::SharedMemory::Role::server);
+    sranipatch::ServerRuntime runtime(options.ipc, !options.lifetime.empty());
     sranipatch::Status status;
     status.config = live_config.config();
     status.session_id = sranipatch::monotonic_ns();
@@ -126,7 +136,7 @@ namespace
       auto rate_time = sranipatch::monotonic_ns();
       std::uint64_t publish_time {};
       std::uint64_t preview_time {};
-      while (!interrupted)
+      while (!interrupted && !lifetime.stop_requested())
       {
         try
         {

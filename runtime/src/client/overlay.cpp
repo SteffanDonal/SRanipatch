@@ -24,7 +24,7 @@ namespace sranipatch
 
   struct Overlay::Impl
   {
-    bool initialized {}, submitted {}, quit {};
+    bool initialized {}, submitted {}, quit {}, closed_by_user {};
     vr::VROverlayHandle_t handle { vr::k_ulOverlayHandleInvalid };
     vr::VROverlayHandle_t thumbnail { vr::k_ulOverlayHandleInvalid };
     GLuint texture {}, framebuffer {};
@@ -100,6 +100,7 @@ namespace sranipatch
           quit = true;
           break;
         case vr::VREvent_OverlayClosed:
+          closed_by_user = true;
           quit = true;
           break;
         case vr::VREvent_MouseMove:
@@ -152,6 +153,11 @@ namespace sranipatch
   bool Overlay::visible() const
   {
     return !impl_->submitted || vr::VROverlay()->IsOverlayVisible(impl_->handle);
+  }
+
+  bool Overlay::closed_by_user() const
+  {
+    return impl_->closed_by_user;
   }
 
   void Overlay::bind_target() const

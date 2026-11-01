@@ -78,6 +78,10 @@ namespace sranipatch
       if (file.bad() || font_data.empty())
         throw std::runtime_error("Cannot read bundled font: " + font.string());
       glfwSetErrorCallback([](int, const char* message) { std::cerr << "GLFW: " << message << '\n'; });
+#ifndef _WIN32
+      if (presentation == Presentation::overlay)
+        glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+#endif
       glfw = glfwInit();
       if (!glfw)
         throw std::runtime_error("GLFW initialization failed");
@@ -257,7 +261,8 @@ namespace sranipatch
       rendering = false;
     }
 
-    void run(const std::function<void()>& render, const volatile std::sig_atomic_t& interrupted)
+    void run(const std::function<void()>& render, const volatile std::sig_atomic_t& interrupted,
+      const std::function<bool()>& stop_requested)
     {
       draw = render;
       error = {};
@@ -286,7 +291,8 @@ namespace sranipatch
       });
       try
       {
-        while (!interrupted && !glfwWindowShouldClose(window))
+        while (!interrupted && !glfwWindowShouldClose(window)
+          && (!stop_requested || !stop_requested()))
         {
 #ifdef _WIN32
           if (windows_surface)
@@ -321,8 +327,14 @@ namespace sranipatch
 
   ClientUi::~ClientUi() = default;
 
-  void ClientUi::run(const std::function<void()>& draw, const volatile std::sig_atomic_t& interrupted)
+  void ClientUi::run(const std::function<void()>& draw, const volatile std::sig_atomic_t& interrupted,
+    const std::function<bool()>& stop_requested)
   {
-    impl_->run(draw, interrupted);
+    impl_->run(draw, interrupted, stop_requested);
+  }
+
+  bool ClientUi::closed_by_user() const
+  {
+    return impl_->overlay && impl_->overlay->closed_by_user();
   }
 }

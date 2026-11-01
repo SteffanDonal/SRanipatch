@@ -1,0 +1,5 @@
+*.user
+*.profraw
+*.profdata
+*.blend*
+!*.blend

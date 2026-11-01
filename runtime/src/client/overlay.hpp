@@ -20,6 +20,7 @@ namespace sranipatch
     Overlay& operator=(const Overlay&) = delete;
     bool poll();
     bool visible() const;
+    bool closed_by_user() const;
     void bind_target() const;
     void submit();
     void wait_frame() const;

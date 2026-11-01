@@ -21,6 +21,11 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 option(SRANIPATCH_BUILD_SERVER "Build camera / MNN / OSC server" ON)
 option(SRANIPATCH_BUILD_CLIENT "Build Dear ImGui client" ON)
 option(
+    SRANIPATCH_BUILD_DRIVER
+    "Build SteamVR lifecycle driver"
+    ${SRANIPATCH_BUILD_SERVER}
+)
+option(
     SRANIPATCH_ENABLE_IPO
     "Enable release link-time optimization for application code"
     ON
@@ -88,6 +93,15 @@ function(sranipatch_target target)
     endif()
 endfunction()
 
+add_library(sranipatch_runtime STATIC src/process.cpp src/runtime_control.cpp)
+target_include_directories(sranipatch_runtime PUBLIC include)
+target_link_libraries(sranipatch_runtime PUBLIC Threads::Threads)
+set_target_properties(
+    sranipatch_runtime
+    PROPERTIES POSITION_INDEPENDENT_CODE ON
+)
+sranipatch_target(sranipatch_runtime)
+
 add_library(
     sranipatch_core
     STATIC
@@ -145,10 +159,11 @@ if(SRANIPATCH_BUILD_SERVER)
         sranipatch-server
         src/server/main.cpp
         src/server/tracking.cpp
+        src/server/runtime.cpp
     )
     target_link_libraries(
         sranipatch-server
-        PRIVATE sranipatch_capture sranipatch_inference MNN
+        PRIVATE sranipatch_capture sranipatch_inference MNN sranipatch_runtime
     )
     if(WIN32)
         target_link_libraries(
@@ -178,6 +193,10 @@ if(SRANIPATCH_BUILD_SERVER)
     )
 endif()
 
+if(SRANIPATCH_BUILD_CLIENT OR SRANIPATCH_BUILD_DRIVER)
+    sranipatch_add_openvr()
+endif()
+
 if(SRANIPATCH_BUILD_CLIENT)
     file(
         READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/head.glb"
@@ -191,7 +210,6 @@ if(SRANIPATCH_BUILD_CLIENT)
         )
     endif()
     sranipatch_add_gui()
-    sranipatch_add_openvr()
     add_library(sranipatch_head_model STATIC src/client/head_model.cpp)
     target_include_directories(sranipatch_head_model PUBLIC src/client)
     target_link_libraries(
@@ -223,6 +241,7 @@ if(SRANIPATCH_BUILD_CLIENT)
             sranipatch_glad
             sranipatch_observation
             sranipatch_openvr
+            sranipatch_runtime
     )
     sranipatch_target(sranipatch-client)
     if(WIN32)
@@ -271,7 +290,96 @@ if(SRANIPATCH_BUILD_CLIENT)
     )
 endif()
 
+if(SRANIPATCH_BUILD_DRIVER)
+    add_library(driver_sranipatch MODULE src/driver/driver.cpp)
+    target_include_directories(
+        driver_sranipatch
+        SYSTEM
+        PRIVATE ${openvr_SOURCE_DIR}/headers
+    )
+    target_link_libraries(
+        driver_sranipatch
+        PRIVATE sranipatch_runtime ${CMAKE_DL_LIBS}
+    )
+    set_target_properties(driver_sranipatch PROPERTIES PREFIX "")
+    sranipatch_target(driver_sranipatch)
+    if(WIN32)
+        set(sranipatch_driver_platform win64)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+        set(sranipatch_driver_platform linuxarm64)
+    else()
+        set(sranipatch_driver_platform linux64)
+    endif()
+    install(
+        TARGETS driver_sranipatch
+        RUNTIME
+            DESTINATION driver/bin/${sranipatch_driver_platform}
+            COMPONENT Runtime
+        LIBRARY
+            DESTINATION driver/bin/${sranipatch_driver_platform}
+            COMPONENT Runtime
+    )
+    install(DIRECTORY driver/ DESTINATION driver COMPONENT Runtime)
+    install(
+        PROGRAMS scripts/register-steamvr.sh
+        DESTINATION scripts
+        COMPONENT Runtime
+    )
+    install(
+        FILES scripts/register-steamvr.ps1
+        DESTINATION scripts
+        COMPONENT Runtime
+    )
+endif()
+
 if(BUILD_TESTING)
+    if(SRANIPATCH_BUILD_DRIVER)
+        add_executable(sranipatch-driver-tests tests/driver_tests.cpp)
+        target_include_directories(
+            sranipatch-driver-tests
+            SYSTEM
+            PRIVATE ${openvr_SOURCE_DIR}/headers
+        )
+        target_link_libraries(
+            sranipatch-driver-tests
+            PRIVATE sranipatch_runtime ${CMAKE_DL_LIBS}
+        )
+        sranipatch_target(sranipatch-driver-tests)
+        add_dependencies(sranipatch-driver-tests driver_sranipatch)
+        add_test(
+            NAME driver-lifecycle
+            COMMAND sranipatch-driver-tests $<TARGET_FILE:driver_sranipatch>
+        )
+        set_tests_properties(driver-lifecycle PROPERTIES TIMEOUT 40)
+    endif()
+    add_executable(sranipatch-recovery-tests src/driver/recovery_tests.cpp)
+    sranipatch_target(sranipatch-recovery-tests)
+    add_test(NAME bounded-recovery COMMAND sranipatch-recovery-tests)
+    add_executable(
+        sranipatch-runtime-tests
+        tests/runtime_tests.cpp
+        src/server/runtime.cpp
+    )
+    target_include_directories(sranipatch-runtime-tests PRIVATE src/server)
+    target_link_libraries(sranipatch-runtime-tests PRIVATE sranipatch_runtime)
+    sranipatch_target(sranipatch-runtime-tests)
+    add_test(NAME runtime-lifecycle COMMAND sranipatch-runtime-tests)
+    set_tests_properties(runtime-lifecycle PROPERTIES TIMEOUT 30)
+    add_executable(sranipatch-process-tests tests/process_tests.cpp)
+    target_link_libraries(sranipatch-process-tests PRIVATE sranipatch_runtime)
+    sranipatch_target(sranipatch-process-tests)
+    add_test(NAME process-lifecycle COMMAND sranipatch-process-tests)
+    set_tests_properties(process-lifecycle PROPERTIES TIMEOUT 30)
+    add_executable(
+        sranipatch-runtime-control-tests
+        tests/runtime_control_tests.cpp
+    )
+    target_link_libraries(
+        sranipatch-runtime-control-tests
+        PRIVATE sranipatch_runtime
+    )
+    sranipatch_target(sranipatch-runtime-control-tests)
+    add_test(NAME runtime-control COMMAND sranipatch-runtime-control-tests)
     if(SRANIPATCH_BUILD_CLIENT)
         add_executable(sranipatch-observation-tests tests/observation_tests.cpp)
         target_link_libraries(
@@ -366,10 +474,24 @@ set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_GENERATOR "ZIP;TGZ")
 set(CPACK_COMPONENTS_ALL Runtime)
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
-if(MSVC AND (SRANIPATCH_BUILD_SERVER OR SRANIPATCH_BUILD_CLIENT))
+if(
+    MSVC
+    AND (
+        SRANIPATCH_BUILD_SERVER
+        OR SRANIPATCH_BUILD_CLIENT
+        OR SRANIPATCH_BUILD_DRIVER
+    )
+)
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION bin)
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT Runtime)
     include(InstallRequiredSystemLibraries)
+    if(SRANIPATCH_BUILD_DRIVER)
+        install(
+            FILES ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
+            DESTINATION driver/bin/${sranipatch_driver_platform}
+            COMPONENT Runtime
+        )
+    endif()
 endif()
 set(CPACK_PACKAGE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 set(CPACK_OUTPUT_FILE_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/../output")

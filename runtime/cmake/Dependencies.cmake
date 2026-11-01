@@ -254,6 +254,7 @@ function(sranipatch_add_openvr)
         SOURCE_SUBDIR unused
     )
     FetchContent_MakeAvailable(openvr)
+    set(openvr_SOURCE_DIR "${openvr_SOURCE_DIR}" PARENT_SCOPE)
     # Build the portable loader rather than depending on SDK prebuilt architectures.
     add_library(
         sranipatch_openvr

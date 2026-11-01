@@ -58,7 +58,21 @@ On Linux, omitting `osc_host` or setting it to an empty value, `""`, or `null` d
 
 The client opens a desktop window by default. `--overlay` presents the same interface as a SteamVR dashboard overlay on Windows and Linux; SteamVR must be running. Dismissing the dashboard hides the interface. The overlay close control and SteamVR shutdown exit the client.
 
-Linux GUI builds include GLFW Wayland and X11 backends. `sh scripts/run-linux.sh` starts the server and overlay client together, uses X11 for the hidden OpenGL context, and stops the server when the client exits or the job is interrupted.
+SteamVR integration is included in server builds; `-DSRANIPATCH_BUILD_DRIVER=OFF` disables it. Register a staged package before starting SteamVR:
+
+```powershell
+./out/package/scripts/register-steamvr.ps1 -DriverPath ./out/package/driver
+```
+
+```sh
+sh out/package/scripts/register-steamvr.sh out/package/driver
+```
+
+Restart SteamVR if it was running during registration. Its SRanipatch driver settings provide tracking startup, dashboard visibility, status, retry, and restart controls. The dashboard defaults to disabled and remembers its setting. Tracking and the dashboard run in separate processes; closing the dashboard leaves tracking running. Repeated failures stop automatic retries and remain visible in the status field.
+
+SteamVR stops servers it starts. An existing manually started server remains under manual control. Disable **Run tracking server** to release the managed server/client files for replacement, then enable it to resume without restarting SteamVR. Keep the registered driver directory unchanged. Registration scripts accept `-Unregister` on Windows or `--unregister` on Linux.
+
+Linux GUI builds include GLFW Wayland and X11 backends; overlays use X11. `sh scripts/run-linux.sh` starts a manually owned server on the performance CPU cluster. SteamVR's dashboard toggle controls its overlay when connected.
 
 Arguments to `scripts/run-linux.sh` are forwarded to the server. For example, `sh scripts/run-linux.sh --precision low` selects MNN's reduced-precision CPU path.
 

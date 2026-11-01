@@ -1,0 +1,135 @@
+[
+  {
+    "title": "SRanipatch",
+    "controller": "sranipatch_tracking",
+    "show_without_hmd": true,
+    "values": [
+      {
+        "name": "/settings/driver_sranipatch/statusState",
+        "type": "int",
+        "control": "none"
+      },
+      {
+        "name": "/settings/driver_sranipatch/status_0",
+        "control": "label",
+        "label": "Status: Waiting for SRanipatch driver",
+        "requires": {
+          "/settings/driver_sranipatch/statusState": 0
+        }
+      },
+      {
+        "name": "/settings/driver_sranipatch/status_1",
+        "control": "label",
+        "label": "Status: Starting tracking server",
+        "requires": {
+          "/settings/driver_sranipatch/statusState": 1
+        }
+      },
+      {
+        "name": "/settings/driver_sranipatch/status_2",
+        "control": "label",
+        "label": "Status: Tracking server running",
+        "requires": {
+          "/settings/driver_sranipatch/statusState": 2
+        }
+      },
+      {
+        "name": "/settings/driver_sranipatch/status_3",
+        "control": "label",
+        "label": "Status: Connected to manually started server",
+        "requires": {
+          "/settings/driver_sranipatch/statusState": 3
+        }
+      },
+      {
+        "name": "/settings/driver_sranipatch/status_4",
+        "control": "label",
+        "label": "Status: Tracking stopped",
+        "requires": {
+          "/settings/driver_sranipatch/statusState": 4
+        }
+      },
+      {
+        "name": "/settings/driver_sranipatch/status_5",
+        "control": "label",
+        "label": "Status: Recovering after a failure; retrying once",
+        "requires": {
+          "/settings/driver_sranipatch/statusState": 5
+        }
+      },
+      {
+        "name": "/settings/driver_sranipatch/status_6",
+        "control": "label",
+        "label": "Status: Server stopped after repeated failures. Use Retry server.",
+        "requires": {
+          "/settings/driver_sranipatch/statusState": 6
+        }
+      },
+      {
+        "name": "/settings/driver_sranipatch/status_7",
+        "control": "label",
+        "label": "Status: Dashboard stopped after repeated failures. Enable it again to retry.",
+        "requires": {
+          "/settings/driver_sranipatch/statusState": 7
+        }
+      },
+      {
+        "name": "/settings/driver_sranipatch/status_8",
+        "control": "label",
+        "label": "Status: Manual server is offline. Start it manually to reconnect.",
+        "requires": {
+          "/settings/driver_sranipatch/statusState": 8
+        }
+      },
+      {
+        "name": "/settings/driver_sranipatch/status_9",
+        "control": "label",
+        "label": "Status: Driver control failed. Restart SteamVR.",
+        "requires": {
+          "/settings/driver_sranipatch/statusState": 9
+        }
+      },
+      {
+        "name": "/settings/driver_sranipatch/runServer",
+        "control": "toggle",
+        "label": "Run tracking server",
+        "text": "Starts tracking with SteamVR. Turn off to stop the server and overlay before replacing runtime files, then turn on to resume.",
+        "requires": {
+          "/settings/driver_sranipatch/serverManaged": true
+        },
+        "on_label": "On",
+        "off_label": "Off"
+      },
+      {
+        "name": "/settings/driver_sranipatch/showOverlay",
+        "control": "toggle",
+        "label": "Show dashboard overlay",
+        "text": "Adds SRanipatch to the SteamVR dashboard. Tracking continues when the overlay is closed.",
+        "on_label": "On",
+        "off_label": "Off"
+      },
+      {
+        "name": "/settings/driver_sranipatch/retryServer",
+        "control": "toggle",
+        "label": "Retry server",
+        "requires": {
+          "/settings/driver_sranipatch/serverManaged": true
+        },
+        "text": "Turn on to retry a server stopped after repeated failures. Resets automatically. Unavailable for manually started servers.",
+        "on_label": "Retry",
+        "off_label": "Ready"
+      },
+      {
+        "name": "/settings/driver_sranipatch/restartServer",
+        "control": "toggle",
+        "label": "Restart server",
+        "requires": {
+          "/settings/driver_sranipatch/serverManaged": true
+        },
+        "text": "Turn on to restart tracking and restore the overlay without restarting SteamVR. Resets automatically. Unavailable for manually started servers.",
+        "on_label": "Restart",
+        "off_label": "Ready"
+      }
+    ]
+  }
+]
