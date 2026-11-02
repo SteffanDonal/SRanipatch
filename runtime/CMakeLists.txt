@@ -107,9 +107,21 @@ function(sranipatch_target target)
     endif()
 endfunction()
 
+add_library(sranipatch_diagnostics STATIC src/diagnostics.cpp)
+target_include_directories(sranipatch_diagnostics PUBLIC include)
+target_link_libraries(sranipatch_diagnostics PUBLIC Threads::Threads)
+set_target_properties(
+    sranipatch_diagnostics
+    PROPERTIES POSITION_INDEPENDENT_CODE ON
+)
+sranipatch_target(sranipatch_diagnostics)
+
 add_library(sranipatch_runtime STATIC src/process.cpp src/runtime_control.cpp)
 target_include_directories(sranipatch_runtime PUBLIC include)
-target_link_libraries(sranipatch_runtime PUBLIC Threads::Threads)
+target_link_libraries(
+    sranipatch_runtime
+    PUBLIC Threads::Threads sranipatch_diagnostics
+)
 set_target_properties(
     sranipatch_runtime
     PROPERTIES POSITION_INDEPENDENT_CODE ON
@@ -127,7 +139,10 @@ add_library(
     src/capture/vive_tracker.cpp
 )
 target_include_directories(sranipatch_core PUBLIC include)
-target_link_libraries(sranipatch_core PUBLIC Threads::Threads)
+target_link_libraries(
+    sranipatch_core
+    PUBLIC Threads::Threads sranipatch_diagnostics
+)
 if(WIN32)
     target_link_libraries(sranipatch_core PRIVATE ws2_32)
 else()
@@ -428,6 +443,14 @@ if(BUILD_TESTING)
     sranipatch_target(sranipatch-runtime-tests)
     add_test(NAME runtime-lifecycle COMMAND sranipatch-runtime-tests)
     set_tests_properties(runtime-lifecycle PROPERTIES TIMEOUT 30)
+    add_executable(sranipatch-diagnostics-tests tests/diagnostics_tests.cpp)
+    target_link_libraries(
+        sranipatch-diagnostics-tests
+        PRIVATE sranipatch_runtime
+    )
+    sranipatch_target(sranipatch-diagnostics-tests)
+    add_test(NAME diagnostic-logging COMMAND sranipatch-diagnostics-tests)
+    set_tests_properties(diagnostic-logging PROPERTIES TIMEOUT 40)
     add_executable(sranipatch-process-tests tests/process_tests.cpp)
     target_link_libraries(sranipatch-process-tests PRIVATE sranipatch_runtime)
     sranipatch_target(sranipatch-process-tests)

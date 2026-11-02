@@ -1,12 +1,14 @@
 #include "tracking.hpp"
 
 #include "sranipatch/capture.hpp"
+#include "sranipatch/diagnostics.hpp"
 #include "sranipatch/live_osc_config.hpp"
 
 #include <atomic>
 #include <condition_variable>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
@@ -267,13 +269,27 @@ int main()
 {
   try
   {
-    idle_startup_uses_no_camera_or_model();
-    peer_lifecycle_retains_model_and_discards_tracking();
-    queued_frames_are_discarded_on_idle();
-    idle_cancels_waiting_for_camera();
+    const auto logs = std::filesystem::temp_directory_path() / ("sranipatch-tracking-logs-" + std::to_string(sranipatch::monotonic_ns()));
+    {
+      sranipatch::DiagnosticSession diagnostics("server", logs);
+      idle_startup_uses_no_camera_or_model();
+      peer_lifecycle_retains_model_and_discards_tracking();
+      queued_frames_are_discarded_on_idle();
+      idle_cancels_waiting_for_camera();
 #ifndef _WIN32
-    live_config_switches_idle_policy();
+      live_config_switches_idle_policy();
 #endif
+    }
+    std::ifstream input(logs / "server.log");
+    const std::string text { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
+    for (const auto* event : { "tracking.capture_start", "camera.open.begin", "camera.open.end", "camera.first_frame",
+           "camera.close.begin", "camera.close.end", "camera.unavailable", "camera.device_wait.begin", "camera.device_wait.end" })
+      require(text.find(std::string("event=") + event) != std::string::npos, "Tracking lifecycle diagnostic missing");
+    require(text.find("error=Test camera unavailable") != std::string::npos, "Camera failure reason missing from diagnostics");
+    input.close();
+    std::filesystem::remove(logs / "server.log");
+    std::filesystem::remove(logs / "server.lock");
+    std::filesystem::remove(logs);
     std::cout << "Tracking lifecycle checks passed\n";
     return 0;
   }

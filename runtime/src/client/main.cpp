@@ -3,6 +3,7 @@
 #include "observation.hpp"
 #include "parameter_grid.hpp"
 #include "performance_plot.hpp"
+#include "sranipatch/diagnostics.hpp"
 #include "sranipatch/osc.hpp"
 #include "sranipatch/process.hpp"
 
@@ -191,6 +192,8 @@ namespace
 
   int run(const Options& options)
   {
+    sranipatch::log_event("client.run", "ipc=", options.ipc, " managed=", !options.lifetime.empty(),
+      " overlay=", options.presentation == sranipatch::Presentation::overlay);
     sranipatch::ProcessLifetime lifetime;
     if (!options.lifetime.empty())
       lifetime = sranipatch::ProcessLifetime(options.lifetime);
@@ -367,7 +370,10 @@ namespace
       interrupted,
       [&] { return lifetime.stop_requested(); }
     );
-    return ui.closed_by_user() && !options.lifetime.empty() ? 2 : 0;
+    const int exit = ui.closed_by_user() && !options.lifetime.empty() ? 2 : 0;
+    sranipatch::log_event("client.exit", "code=", exit, " closed_by_user=", ui.closed_by_user(),
+      " signal=", interrupted, " lifetime=", lifetime.stop_requested());
+    return exit;
   }
 }  // namespace
 
@@ -375,6 +381,7 @@ namespace
 // NOLINTNEXTLINE(bugprone-exception-escape)
 int client_main(int argc, char** argv)
 {
+  sranipatch::DiagnosticSession diagnostics("overlay");
   bool managed {};
   try
   {
@@ -391,6 +398,7 @@ int client_main(int argc, char** argv)
   }
   catch (const std::exception& error)
   {
+    sranipatch::log_event("client.fault", "error=", error.what());
 #ifdef _WIN32
     if (!managed)
       MessageBoxA(nullptr, error.what(), "SRanipatch client", MB_OK | MB_ICONERROR);

@@ -1,4 +1,5 @@
 #include "sranipatch/capture.hpp"
+#include "sranipatch/diagnostics.hpp"
 #include "sranipatch/protocol.hpp"
 #include "sranipatch/vive_tracker.hpp"
 
@@ -42,9 +43,11 @@ namespace sranipatch
     {
       if (call_ioctl(fd, request, argument) < 0)
       {
-        if (errno == ENODEV)
+        const int error = errno;
+        log_event("v4l2.ioctl.error", "operation=", operation, " errno=", error);
+        if (error == ENODEV)
           throw CaptureUnavailable("V4L2 camera disconnected", false);
-        throw std::runtime_error(std::string(operation) + ": " + std::strerror(errno));
+        throw std::runtime_error(std::string(operation) + ": " + std::strerror(error));
       }
     }
 
@@ -206,10 +209,13 @@ namespace sranipatch
 
       void close_device() noexcept
       {
+        log_event("v4l2.close.begin", "fd=", fd_, " streaming=", streaming_);
         if (streaming_)
         {
           auto type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-          call_ioctl(fd_, VIDIOC_STREAMOFF, &type);
+          const int result = call_ioctl(fd_, VIDIOC_STREAMOFF, &type);
+          const int error = result < 0 ? errno : 0;
+          log_event("v4l2.streamoff", "result=", result, " errno=", error);
         }
         for (const auto& buffer : buffers_)
           if (buffer.data != MAP_FAILED)
@@ -222,20 +228,24 @@ namespace sranipatch
           }
           catch (const std::exception& error)
           {
+            log_event("v4l2.sensor_disable.error", "error=", error.what());
             std::cerr << "VIVE shutdown: " << error.what() << '\n';
           }
           extension_.reset();
         }
         if (fd_ >= 0)
           close(fd_);
+        log_event("v4l2.close.end");
       }
 
     public:
       V4l2()
       {
+        log_event("v4l2.open.begin");
         try
         {
           const auto device = find_vive_video_device();
+          log_event("v4l2.device_selected", "device=", device);
           fd_ = open(device.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
           if (fd_ < 0)
             throw std::runtime_error("Cannot open V4L2 device: " + std::string(std::strerror(errno)));
@@ -303,6 +313,8 @@ namespace sranipatch
           auto type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
           checked_ioctl(fd_, VIDIOC_STREAMON, &type, "VIDIOC_STREAMON");
           streaming_ = true;
+          log_event("v4l2.open.end", "device=", device, " format=YUYV fps=60 width=", width_,
+            " height=", height_, " stride=", stride_);
         }
         catch (...)
         {
@@ -325,7 +337,11 @@ namespace sranipatch
         if (result < 0 && errno == EINTR)
           return false;
         if (result < 0 || (ready.revents & (POLLERR | POLLHUP | POLLNVAL)))
+        {
+          const int error = result < 0 ? errno : 0;
+          log_event("v4l2.poll.error", "result=", result, " errno=", error, " revents=", ready.revents);
           throw CaptureUnavailable("V4L2 camera disconnected / poll failed", false);
+        }
         if (result == 0)
           return false;
         v4l2_buffer buffer {};
@@ -335,9 +351,11 @@ namespace sranipatch
         {
           if (errno == EAGAIN)
             return false;
-          if (errno == ENODEV)
+          const int error = errno;
+          log_event("v4l2.dequeue.error", "errno=", error);
+          if (error == ENODEV)
             throw CaptureUnavailable("V4L2 camera disconnected", false);
-          throw std::runtime_error("VIDIOC_DQBUF failed: " + std::string(std::strerror(errno)));
+          throw std::runtime_error("VIDIOC_DQBUF failed: " + std::string(std::strerror(error)));
         }
         if (buffer.index >= buffers_.size())
           throw std::runtime_error("V4L2 returned an invalid buffer index");

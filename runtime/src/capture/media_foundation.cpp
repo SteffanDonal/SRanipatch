@@ -1,4 +1,5 @@
 #include "sranipatch/capture.hpp"
+#include "sranipatch/diagnostics.hpp"
 #include "sranipatch/protocol.hpp"
 #include "sranipatch/vive_tracker.hpp"
 
@@ -16,6 +17,7 @@
 #include <wrl.h>
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <cwchar>
 #include <cwctype>
@@ -37,6 +39,8 @@ namespace sranipatch
     {
       if (FAILED(result))
       {
+        log_event("mf.error", "operation=", operation, " hresult=0x", std::hex,
+          static_cast<unsigned long>(result));
         std::ostringstream message;
         message << operation << " failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(result)
                 << ')';
@@ -306,6 +310,8 @@ namespace sranipatch
       bool flushed {};
       std::uint64_t timestamp_ns {};
       bool device_timestamp {};
+      const std::uint64_t capture_id { monotonic_ns() };
+      std::atomic<std::uint64_t> callbacks {}, empty_samples {};
     };
 
     class ReaderCallback final
@@ -317,6 +323,9 @@ namespace sranipatch
 
       STDMETHODIMP OnReadSample(HRESULT result, DWORD, DWORD flags, LONGLONG, IMFSample* sample) override
       {
+        state->callbacks.fetch_add(1, std::memory_order_relaxed);
+        if (!sample)
+          state->empty_samples.fetch_add(1, std::memory_order_relaxed);
         const auto arrival = monotonic_ns();
         UINT64 device_time {};
         const bool has_device_time =
@@ -334,11 +343,22 @@ namespace sranipatch
           state->complete = true;
         }
         state->ready.notify_one();
+        if (FAILED(result) || (flags & (MF_SOURCE_READERF_ERROR | MF_SOURCE_READERF_ENDOFSTREAM | MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)))
+          log_callback("mf.callback.error", "capture=", state->capture_id, " hresult=0x", std::hex,
+            static_cast<unsigned long>(result), " flags=0x", flags, " sample=", sample != nullptr);
         return S_OK;
       }
 
-      STDMETHODIMP OnEvent(DWORD, IMFMediaEvent*) override
+      STDMETHODIMP OnEvent(DWORD stream, IMFMediaEvent* event) override
       {
+        MediaEventType type { MEUnknown };
+        HRESULT status { S_OK };
+        const auto type_result = event ? event->GetType(&type) : E_POINTER;
+        const auto status_result = event ? event->GetStatus(&status) : E_POINTER;
+        log_callback("mf.callback.event", "capture=", state->capture_id, " stream=", stream,
+          " type=", static_cast<int>(type), " hresult=0x", std::hex, static_cast<unsigned long>(status),
+          " type_result=0x", static_cast<unsigned long>(type_result), " status_result=0x",
+          static_cast<unsigned long>(status_result));
         return S_OK;
       }
 
@@ -349,6 +369,7 @@ namespace sranipatch
           state->flushed = true;
         }
         state->ready.notify_all();
+        log_callback("mf.callback.flushed", "capture=", state->capture_id);
         return S_OK;
       }
     };
@@ -380,6 +401,7 @@ namespace sranipatch
       std::uint64_t dropped_ {};
       std::uint64_t stale_ {};
       bool timestamp_reported_ {};
+      std::uint64_t requests_ {}, summary_time_ {};
       std::unique_ptr<WindowsTrackerExtension> tracker_;
       bool tracker_initialized_ {};
 
@@ -387,27 +409,41 @@ namespace sranipatch
       {
         ++dropped_;
         if (dropped_ == 1 || dropped_ % capture_fps == 0)
+        {
+          log_summary("mf.frames.discarded", "capture=", state_->capture_id, " total=", dropped_, " reason=", reason);
           std::cerr << "Media Foundation: discarded " << dropped_ << " frame(s); " << reason << '\n';
+        }
       }
 
       void stale_frame()
       {
         ++stale_;
         if (stale_ == 1 || stale_ % capture_fps == 0)
+        {
+          log_summary("mf.frames.stale", "capture=", state_->capture_id, " total=", stale_);
           std::cerr << "Media Foundation: drained " << stale_ << " stale frame(s)\n";
+        }
       }
 
       // Mutex failure during teardown is unrecoverable; terminate rather than escape the destructor.
       // NOLINTNEXTLINE(bugprone-exception-escape)
       void shutdown() noexcept
       {
+        log_event("mf.shutdown.begin", "capture=", state_->capture_id, " requests=", requests_,
+          " callbacks=", state_->callbacks.load(std::memory_order_relaxed), " frames=", sequence_,
+          " dropped=", dropped_, " stale=", stale_);
         if (reader_)
         {
-          if (SUCCEEDED(reader_->Flush(all_streams)))
+          log_event("mf.flush.begin", "capture=", state_->capture_id);
+          const auto result = reader_->Flush(all_streams);
+          bool flushed {};
+          if (SUCCEEDED(result))
           {
             std::unique_lock lock(state_->mutex);
-            state_->ready.wait_for(lock, std::chrono::seconds(1), [this] { return state_->flushed; });
+            flushed = state_->ready.wait_for(lock, std::chrono::seconds(1), [this] { return state_->flushed; });
           }
+          log_event("mf.flush.end", "capture=", state_->capture_id, " callback_received=", flushed,
+            " hresult=0x", std::hex, static_cast<unsigned long>(result));
         }
         {
           std::lock_guard lock(state_->mutex);
@@ -417,34 +453,45 @@ namespace sranipatch
         {
           try
           {
+            log_event("mf.sensor_disable.begin", "capture=", state_->capture_id);
             disable_vive_tracker(*tracker_);
+            log_event("mf.sensor_disable.end", "capture=", state_->capture_id);
           }
           catch (const std::exception& error)
           {
+            log_event("mf.sensor_disable.error", "capture=", state_->capture_id, " error=", error.what());
             std::cerr << "VIVE shutdown: " << error.what() << '\n';
           }
         }
         reader_.Reset();
         tracker_.reset();
         if (source_)
-          source_->Shutdown();
+        {
+          log_event("mf.source_shutdown.begin", "capture=", state_->capture_id);
+          const auto result = source_->Shutdown();
+          log_event("mf.source_shutdown.end", "capture=", state_->capture_id, " hresult=0x",
+            std::hex, static_cast<unsigned long>(result));
+        }
         source_.Reset();
         callback_.Reset();
         if (mf_)
           MFShutdown();
         if (com_)
           CoUninitialize();
+        log_event("mf.shutdown.end", "capture=", state_->capture_id);
       }
 
     public:
       MediaFoundation()
       {
+        log_event("mf.initialize.begin", "capture=", state_->capture_id);
         try
         {
           check(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "CoInitializeEx");
           com_ = true;
           check(MFStartup(MF_VERSION), "MFStartup");
           mf_ = true;
+          log_event("mf.enumerate.begin", "capture=", state_->capture_id);
           ComPtr<IMFAttributes> attributes;
           check(MFCreateAttributes(&attributes, 1), "MFCreateAttributes");
           check(attributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
@@ -467,17 +514,23 @@ namespace sranipatch
             throw std::runtime_error("Expected exactly one VIVE Facial Tracker (USB 0BB4:0321)");
           const auto path = attribute_string(devices.items[index],
             MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK);
+          log_event("mf.enumerate.end", "capture=", state_->capture_id, " devices=", devices.count,
+            " matches=", matches, " selected=", index, " usb=0bb4:0321");
           std::wcout << L"Opening "
                      << attribute_string(devices.items[index], MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME)
                      << L" (USB 0BB4:0321)\n";
           check(devices.items[index]->SetUINT32(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_MAX_BUFFERS, 1),
             "Limit capture source buffers");
+          log_event("mf.activate.begin", "capture=", state_->capture_id);
           check(devices.items[index]->ActivateObject(IID_PPV_ARGS(&source_)), "Activate camera");
+          log_event("mf.activate.end", "capture=", state_->capture_id);
           try
           {
+            log_event("mf.sensor_enable.begin", "capture=", state_->capture_id);
             tracker_ = std::make_unique<WindowsTrackerExtension>(source_.Get(), path);
             tracker_initialized_ = true;
             enable_vive_tracker(*tracker_);
+            log_event("mf.sensor_enable.end", "capture=", state_->capture_id);
           }
           catch (const std::exception& error)
           {
@@ -495,10 +548,13 @@ namespace sranipatch
             "Disable video conversion");
           check(reader_attributes->SetUINT32(MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN, TRUE),
             "Keep media source alive for explicit shutdown");
+          log_event("mf.reader_create.begin", "capture=", state_->capture_id);
           check(MFCreateSourceReaderFromMediaSource(source_.Get(), reader_attributes.Get(), &reader_),
             "Create reader");
+          log_event("mf.reader_create.end", "capture=", state_->capture_id);
           check(reader_->SetStreamSelection(all_streams, FALSE), "Deselect streams");
           check(reader_->SetStreamSelection(video_stream, TRUE), "Select video");
+          log_event("mf.media_type.begin", "capture=", state_->capture_id);
           bool matched = false;
           for (DWORD i = 0;; ++i)
           {
@@ -539,6 +595,8 @@ namespace sranipatch
           else
             check(MFGetStrideForBitmapInfoHeader(MFVideoFormat_YUY2.Data1, width_, &stride_),
               "Get stride");
+          log_event("mf.initialize.end", "capture=", state_->capture_id, " width=", width_,
+            " height=", height_, " stride=", stride_, " format=YUY2 fps=60");
         }
         catch (...)
         {
@@ -554,6 +612,15 @@ namespace sranipatch
 
       bool read(Frame& frame, std::stop_token stop) override
       {
+        const auto summary_now = monotonic_ns();
+        if (summary_now - summary_time_ >= 5'000'000'000ULL)
+        {
+          log_summary("mf.capture.summary", "capture=", state_->capture_id, " requests=", requests_,
+            " callbacks=", state_->callbacks.load(std::memory_order_relaxed),
+            " empty_samples=", state_->empty_samples.load(std::memory_order_relaxed),
+            " frames=", sequence_, " dropped=", dropped_, " stale=", stale_, " pending=", pending_);
+          summary_time_ = summary_now;
+        }
         if (stop.stop_requested())
           return false;
         if (!pending_)
@@ -563,8 +630,17 @@ namespace sranipatch
             state_->complete = false;
             state_->sample.Reset();
           }
-          if (FAILED(reader_->ReadSample(video_stream, 0, nullptr, nullptr, nullptr, nullptr)))
+          if (requests_++ == 0)
+            log_event("mf.first_read.begin", "capture=", state_->capture_id);
+          const auto result = reader_->ReadSample(video_stream, 0, nullptr, nullptr, nullptr, nullptr);
+          if (FAILED(result))
+          {
+            log_event("mf.read_request.error", "capture=", state_->capture_id, " hresult=0x",
+              std::hex, static_cast<unsigned long>(result));
             throw CaptureUnavailable("Media Foundation cannot request a camera sample", false);
+          }
+          if (requests_ == 1)
+            log_event("mf.first_read.end", "capture=", state_->capture_id);
           pending_ = true;
         }
         ComPtr<IMFSample> sample;
@@ -576,7 +652,14 @@ namespace sranipatch
             return false;
           pending_ = false;
           if (FAILED(state_->result) || (state_->flags & (MF_SOURCE_READERF_ERROR | MF_SOURCE_READERF_ENDOFSTREAM)))
+          {
+            const auto result = state_->result;
+            const auto flags = state_->flags;
+            lock.unlock();
+            log_event("mf.read.error", "capture=", state_->capture_id, " hresult=0x", std::hex,
+              static_cast<unsigned long>(result), " flags=0x", flags);
             throw CaptureUnavailable("Media Foundation camera disconnected", false);
+          }
           if (state_->flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
             throw std::runtime_error("Media Foundation camera changed format");
           sample = state_->sample;

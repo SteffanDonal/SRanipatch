@@ -1,4 +1,5 @@
 #include "recovery.hpp"
+#include "sranipatch/diagnostics.hpp"
 #include "sranipatch/process.hpp"
 #include "sranipatch/protocol.hpp"
 #include "sranipatch/runtime_control.hpp"
@@ -9,6 +10,7 @@
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -76,6 +78,8 @@ namespace
       VR_INIT_SERVER_DRIVER_CONTEXT(context);
       try
       {
+        diagnostics_.emplace("driver");
+        sranipatch::log_event("driver.init", "revision=", SRANIPATCH_DRIVER_REVISION);
         // Resolve interfaces before starting the worker; OpenVR's lazy helpers are not synchronized.
         settings_ = vr::VRSettings();
         log_ = vr::VRDriverLog();
@@ -117,6 +121,8 @@ namespace
         worker_.join();
       }
       VR_CLEANUP_SERVER_DRIVER_CONTEXT();
+      sranipatch::log_event("driver.cleanup");
+      diagnostics_.reset();
     }
 
     const char* const* GetInterfaceVersions() override { return vr::k_InterfaceVersions; }
@@ -151,6 +157,7 @@ namespace
       if (message == status_)
         return;
       status_ = message;
+      sranipatch::log_event("driver.status", "state=", static_cast<int>(state), " message=", message);
       if (settings_)
         settings_->SetString(section, "status", message.c_str());
       if (log_)
@@ -190,6 +197,7 @@ namespace
       sranipatch::ControlChannel channel(ipc_name);
       sranipatch::DriverControl control;
       control.session_id = sranipatch::monotonic_ns();
+      sranipatch::log_event("driver.session", "session=", control.session_id, " ipc=", ipc_name);
       control.overlay_revision = 1;
       sranipatch::ChildProcess child;
       sranipatch::Recovery recovery;
@@ -218,6 +226,7 @@ namespace
       settings_->SetBool(section, "serverManaged", true);
 
       const auto failed = [&](const std::string& reason) {
+        sranipatch::log_event("server.recovery", "reason=", reason, " server_control_session=", server_session);
         child.stop(shutdown_timeout);
         starting = false;
         attached = false;
@@ -256,6 +265,7 @@ namespace
           status("Manually started server: restart and retry are unavailable", DisplayStatus::manual);
         else if (retry || restart)
         {
+          sranipatch::log_event("server.restart_requested", "retry=", retry, " restart=", restart);
           settings_->SetBool(section, "runServer", true);
           requested_run = true;
           child.stop(shutdown_timeout);
@@ -269,6 +279,8 @@ namespace
 
         if (!manual && !requested_run)
         {
+          if (child.active())
+            sranipatch::log_event("server.stop_requested", "reason=run_disabled");
           child.stop(shutdown_timeout);
           starting = false;
           attached = false;
@@ -316,6 +328,8 @@ namespace
           {
             server_session = snapshot.server.session_id;
             starting = false;
+            sranipatch::log_event("server.ready", "server_control_session=", server_session,
+              " driver_session=", control.session_id);
             attached = true;
             overlay_error.clear();
             recovery.healthy(now);
@@ -335,7 +349,9 @@ namespace
           try
           {
             launched_once = true;
+            sranipatch::log_event("server.launch.begin", "ipc=", ipc_name, " driver_session=", control.session_id);
             child.start(executable, { "--ipc", ipc_name }, directory);
+            sranipatch::log_event("server.launch.end");
             launched = now;
             starting = true;
             status("Starting tracking server", DisplayStatus::starting);
@@ -381,6 +397,7 @@ namespace
       status("SteamVR stopped", DisplayStatus::stopped);
     }
 
+    std::optional<sranipatch::DiagnosticSession> diagnostics_;
     std::jthread worker_;
     vr::IVRSettings* settings_ {};
     vr::IVRDriverLog* log_ {};

@@ -1,5 +1,7 @@
 #include "sranipatch/process.hpp"
 
+#include "sranipatch/diagnostics.hpp"
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -199,6 +201,7 @@ namespace sranipatch
           working_directory.empty() ? nullptr : working_directory.c_str(), &startup.StartupInfo, &process))
       throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Launch child process");
     next->process.value = process.hProcess;
+    log_event("child.created", "pid=", process.dwProcessId, " executable=", executable);
     Handle thread;
     thread.value = process.hThread;
     if (!AssignProcessToJobObject(next->job.value, next->process.value)
@@ -250,6 +253,7 @@ namespace sranipatch
     error = posix_spawn(&next->process, executable.c_str(), &actions, nullptr, argv.data(), environ);
     if (error)
       throw std::system_error(error, std::generic_category(), "Launch child process");
+    log_event("child.created", "pid=", next->process, " executable=", executable);
 #endif
     next->running = true;
     state_ = std::move(next);
@@ -266,6 +270,7 @@ namespace sranipatch
     if (!GetExitCodeProcess(state_->process.value, &result))
       result = 1;
     state_->exit_code = static_cast<int>(result);
+    log_event("child.exited", "pid=", GetProcessId(state_->process.value), " code=", *state_->exit_code);
     state_->process.reset();
     state_->job.reset();
 #else
@@ -275,6 +280,7 @@ namespace sranipatch
       return std::nullopt;
     state_->exit_code = waited < 0 ? 1 : WIFEXITED(result) ? WEXITSTATUS(result)
                                                            : 128 + WTERMSIG(result);
+    log_event("child.exited", "pid=", state_->process, " code=", *state_->exit_code);
     state_->process = -1;
 #endif
     state_->running = false;
@@ -295,12 +301,15 @@ namespace sranipatch
 
   void ChildProcess::stop(std::chrono::milliseconds timeout) noexcept
   {
+    if (active())
+      log_event("child.stop_requested", "timeout_ms=", timeout.count());
     request_stop();
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (active() && !poll() && std::chrono::steady_clock::now() < deadline)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (!active())
       return;
+    log_event("child.force_terminate", "timeout_ms=", timeout.count());
 #ifdef _WIN32
     TerminateJobObject(state_->job.value, 1);
     WaitForSingleObject(state_->process.value, INFINITE);

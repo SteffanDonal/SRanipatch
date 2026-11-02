@@ -1,5 +1,6 @@
 #include "runtime.hpp"
 
+#include "sranipatch/diagnostics.hpp"
 #include "sranipatch/process.hpp"
 #include "sranipatch/protocol.hpp"
 #include "sranipatch/runtime_control.hpp"
@@ -54,6 +55,9 @@ namespace sranipatch
           enabled = requested;
           if (!enabled)
           {
+            if (client.active())
+              log_event("overlay.stop_requested", "driver_connected=", connected,
+                " driver_session=", control.driver.session_id, " requested=", control.driver.show_overlay);
             client.stop();
             status.overlay = OverlayState::stopped;
             finished = false;
@@ -65,6 +69,8 @@ namespace sranipatch
               const auto exit = client.poll();
               if (exit)
               {
+                log_event("overlay.child_exit", "code=", *exit, " failures=", failures,
+                  " server_control_session=", status.session_id);
                 if (*exit == 2)
                 {
                   status.overlay = OverlayState::closed;
@@ -91,13 +97,17 @@ namespace sranipatch
             {
               try
               {
+                log_event("overlay.launch.begin", "ipc=", ipc, " failures=", failures,
+                  " driver_session=", driver_session, " server_control_session=", status.session_id);
                 client.start(executable, { "--overlay", "--ipc", ipc }, executable.parent_path());
+                log_event("overlay.launch.end");
                 started = now;
                 status.overlay = OverlayState::running;
                 status.message.fill('\0');
               }
               catch (const std::exception& error)
               {
+                log_event("overlay.launch_failed", "error=", error.what());
                 ++failures;
                 retry_at = now + retry_delay;
                 finished = failures >= 2;
@@ -116,12 +126,16 @@ namespace sranipatch
           client.stop();
           channel.reset();
           if (!reported_error)
+          {
+            log_event("runtime.control_failed", "error=", error.what());
             std::cerr << "Runtime control unavailable: " << error.what() << '\n';
+          }
           reported_error = true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
       client.stop();
+      log_event("runtime.stop", "server_control_session=", status.session_id);
       if (channel)
       {
         try

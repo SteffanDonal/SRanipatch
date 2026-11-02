@@ -1,5 +1,7 @@
 #include "overlay.hpp"
 
+#include "sranipatch/diagnostics.hpp"
+
 #include <glad/gl.h>
 #include <imgui.h>
 #include <openvr.h>
@@ -54,6 +56,7 @@ namespace sranipatch
 
     void initialize(SurfaceSize size, const std::filesystem::path& thumbnail_path)
     {
+      log_event("overlay.initialize.begin");
       height = size.height;
       vr::EVRInitError error = vr::VRInitError_None;
       vr::VR_Init(&error, vr::VRApplication_Overlay);
@@ -88,6 +91,7 @@ namespace sranipatch
       if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         throw std::runtime_error("Cannot create OpenVR overlay render target");
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      log_event("overlay.initialize.end", "width=", size.width, " height=", size.height);
     }
 
     void event(const vr::VREvent_t& event)
@@ -96,10 +100,12 @@ namespace sranipatch
       switch (event.eventType)
       {
         case vr::VREvent_Quit:
+          log_event("overlay.quit");
           vr::VRSystem()->AcknowledgeQuit_Exiting();
           quit = true;
           break;
         case vr::VREvent_OverlayClosed:
+          log_event("overlay.closed_by_user");
           closed_by_user = true;
           quit = true;
           break;

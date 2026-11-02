@@ -1,5 +1,6 @@
 #include "runtime.hpp"
 #include "sranipatch/config.hpp"
+#include "sranipatch/diagnostics.hpp"
 #include "sranipatch/inference.hpp"
 #include "sranipatch/ipc.hpp"
 #include "sranipatch/live_osc_config.hpp"
@@ -125,6 +126,9 @@ namespace
     status.config = live_config.config();
     status.session_id = sranipatch::monotonic_ns();
     status.heartbeat_ns = status.session_id;
+    sranipatch::log_event("server.session", "session=", status.session_id, " ipc=", options.ipc,
+      " managed=", !options.lifetime.empty(), " precision=", precision_name(options.precision),
+      " threads=", options.config.threads);
     ipc.publish(status);
     try
     {
@@ -136,6 +140,8 @@ namespace
       auto rate_time = sranipatch::monotonic_ns();
       std::uint64_t publish_time {};
       std::uint64_t preview_time {};
+      std::uint64_t summary_time {};
+      auto previous_state = status.state;
       while (!interrupted && !lifetime.stop_requested())
       {
         try
@@ -168,6 +174,21 @@ namespace
             ++status.osc_failures;
         }
         const auto now = sranipatch::monotonic_ns();
+        if (status.state != previous_state)
+        {
+          sranipatch::log_event("server.state", "session=", status.session_id, " from=",
+            static_cast<int>(previous_state), " to=", static_cast<int>(status.state), " capture_active=", active);
+          previous_state = status.state;
+        }
+        if (now - summary_time >= 5'000'000'000ULL)
+        {
+          sranipatch::log_summary("server.summary", "session=", status.session_id, " state=",
+            static_cast<int>(status.state), " captured=", status.frames_captured, " inferred=",
+            status.frames_inferred, " skipped=", status.frames_skipped, " capture_fps=", status.capture_fps,
+            " inference_fps=", status.inference_fps, " inference_ms=", status.inference_ms,
+            " frame_age_ms=", status.frame_age_ms, " osc_failures=", status.osc_failures);
+          summary_time = now;
+        }
         status.osc_destination = osc.destination();
         if (!active)
         {
@@ -198,17 +219,22 @@ namespace
           std::this_thread::sleep_for(std::chrono::milliseconds(50));
       }
       status.state = sranipatch::ServerState::stopped;
+      sranipatch::log_event("server.stop_requested", "session=", status.session_id,
+        " signal=", interrupted, " lifetime=", lifetime.stop_requested());
     }
     catch (const std::exception& error)
     {
       status.state = sranipatch::ServerState::fault;
       sranipatch::set_text(status.error, error.what());
       std::cerr << "Server fault: " << error.what() << '\n';
+      sranipatch::log_event("server.fault", "session=", status.session_id, " error=", error.what());
     }
     status.heartbeat_ns = sranipatch::monotonic_ns();
     for (int i = 0; i < 10 && !ipc.publish(status); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    return status.state == sranipatch::ServerState::fault ? 1 : 0;
+    const int exit = status.state == sranipatch::ServerState::fault ? 1 : 0;
+    sranipatch::log_event("server.exit", "session=", status.session_id, " code=", exit);
+    return exit;
   }
 }  // namespace
 
@@ -216,6 +242,7 @@ namespace
 // NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv)
 {
+  sranipatch::DiagnosticSession diagnostics("server");
   sranipatch::cleanup_old_packages();
   std::cout << std::unitbuf;
   try
@@ -232,6 +259,7 @@ int main(int argc, char** argv)
   }
   catch (const std::exception& error)
   {
+    sranipatch::log_event("server.start_failed", "error=", error.what());
     std::cerr << error.what() << '\n';
     return 1;
   }

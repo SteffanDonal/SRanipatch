@@ -1,5 +1,7 @@
 #include "observation.hpp"
 
+#include "sranipatch/diagnostics.hpp"
+
 #include <exception>
 #include <utility>
 
@@ -20,6 +22,9 @@ namespace sranipatch
 
   const ObservationSnapshot& Observation::update()
   {
+    const bool was_available = snapshot_.available;
+    const bool was_camera_fresh = snapshot_.camera_fresh;
+    const bool was_tracking_fresh = snapshot_.tracking_fresh;
     auto now = clock_();
     snapshot_.session_changed = false;
     snapshot_.frame_changed = false;
@@ -47,6 +52,8 @@ namespace sranipatch
           if (status.session_id != snapshot_.status.session_id)
           {
             snapshot_.session_changed = true;
+            log_event("observation.session", "previous=", snapshot_.status.session_id,
+              " session=", status.session_id);
             snapshot_.status = {};
             snapshot_.frame = {};
             camera_at_ = tracking_at_ = 0;
@@ -91,6 +98,14 @@ namespace sranipatch
     }
     snapshot_.camera_fresh = snapshot_.available && recent(camera_at_, now, freshness_ns);
     snapshot_.tracking_fresh = snapshot_.available && recent(tracking_at_, now, freshness_ns);
+    if (was_available != snapshot_.available || was_camera_fresh != snapshot_.camera_fresh
+      || was_tracking_fresh != snapshot_.tracking_fresh)
+      log_callback("observation.state", "session=", snapshot_.status.session_id,
+        " available=", snapshot_.available, " camera_fresh=", snapshot_.camera_fresh,
+        " tracking_fresh=", snapshot_.tracking_fresh, " state=", static_cast<int>(snapshot_.status.state),
+        " heartbeat_age_ms=", now >= snapshot_.status.heartbeat_ns ? (now - snapshot_.status.heartbeat_ns) / 1'000'000 : 0,
+        " captured=", snapshot_.status.frames_captured, " inferred=", snapshot_.status.frames_inferred,
+        " message=", snapshot_.message);
     return snapshot_;
   }
 }
