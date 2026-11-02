@@ -16,8 +16,9 @@ For Windows x64, extract the ZIP from [Releases](https://github.com/steffandonal
 
 Package commands (`.cmd` on Windows):
 
-- `start`: run tracking manually without registering with SteamVR. Server arguments are forwarded.
-- `install`: register this folder and offer a SteamVR restart.
+- `start-server`: run tracking manually without registering with SteamVR. Server arguments are forwarded.
+- `start-client`: open the desktop interface. Client arguments are forwarded.
+- `install`: register this folder and offer a restart if SteamVR is running.
 - `uninstall`: unregister this folder; settings and files remain.
 - `update`: install the latest stable release, preserving settings and whether this folder is registered.
 - `github`: open the project repository (`github.url` on Windows).

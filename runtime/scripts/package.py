@@ -156,7 +156,7 @@ def restore_processes(root, snapshot):
 
 
 def offer_restart(no_restart):
-    if no_restart:
+    if no_restart or not steamvr_running():
         return
     print(
         "On Steam Frame, restarting SteamVR will make the display go black temporarily."
@@ -222,6 +222,18 @@ def offer_restart(no_restart):
     )
 
 
+def steamvr_running():
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            if (entry / "comm").read_text().strip() == "vrserver":
+                return True
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+    return False
+
+
 def download(url, destination):
     request = urllib.request.Request(url, headers={"User-Agent": "sranipatch-updater"})
     with (
@@ -271,7 +283,8 @@ def validate(root, platform):
         "app/bin/sranipatch-client",
         "app/bin/sranipatch-package-control",
         "app/driver/driver.vrdrivermanifest",
-        "start",
+        "start-server",
+        "start-client",
         "install",
         "uninstall",
         "update",
@@ -300,8 +313,16 @@ def apply_update(root, staged):
             backup.rename(root / "app")
             moved = False
             raise
-        for name in ("start", "install", "uninstall", "update", "github"):
+        for name in (
+            "start-server",
+            "start-client",
+            "install",
+            "uninstall",
+            "update",
+            "github",
+        ):
             shutil.copy2(staged / name, root / name)
+        (root / "start").unlink(missing_ok=True)
         if was_registered:
             register(root)
     finally:
@@ -352,13 +373,22 @@ def update(root, archive=None, no_restart=False):
 
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "start":
+    if len(sys.argv) > 1 and sys.argv[1] in ("start-server", "start-client"):
         cleanup(ROOT)
-        executable = ROOT / "app/bin/sranipatch-server"
+        application = sys.argv[1].removeprefix("start-")
+        executable = ROOT / f"app/bin/sranipatch-{application}"
         os.execv(executable, [str(executable), *sys.argv[2:]])
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "command", choices=("start", "install", "uninstall", "update", "github")
+        "command",
+        choices=(
+            "start-server",
+            "start-client",
+            "install",
+            "uninstall",
+            "update",
+            "github",
+        ),
     )
     parser.add_argument("--no-restart", action="store_true")
     parser.add_argument(
@@ -366,13 +396,10 @@ def main():
     )
     options, arguments = parser.parse_known_args()
     root = ROOT
-    if options.command != "start" and arguments:
+    if arguments:
         parser.error("unrecognized arguments: " + " ".join(arguments))
     cleanup(root)
-    if options.command == "start":
-        executable = root / "app/bin/sranipatch-server"
-        os.execv(executable, [str(executable), *arguments])
-    elif options.command == "github":
+    if options.command == "github":
         run("xdg-open", REPOSITORY)
     elif options.command == "install":
         register(root)

@@ -585,7 +585,14 @@ install(
 if(WIN32)
     install(FILES scripts/package.ps1 DESTINATION app/scripts COMPONENT Runtime)
     install(FILES scripts/github.url DESTINATION . COMPONENT Runtime)
-    foreach(command start install uninstall update)
+    foreach(
+        command
+        start-server
+        start-client
+        install
+        uninstall
+        update
+    )
         configure_file(
             scripts/launcher.cmd.in
             "${CMAKE_CURRENT_BINARY_DIR}/${command}.cmd"
@@ -601,7 +608,8 @@ else()
     install(FILES scripts/package.py DESTINATION app/scripts COMPONENT Runtime)
     foreach(
         command
-        start
+        start-server
+        start-client
         install
         uninstall
         update

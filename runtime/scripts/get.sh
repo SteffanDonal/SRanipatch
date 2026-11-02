@@ -68,7 +68,7 @@ info = json.loads((destination / 'app/package.json').read_text())
 release = json.loads(release_file.read_text())
 if info['platform'] != 'linux-arm64' or info['version'] != release['tag_name']:
     raise RuntimeError('Release metadata does not match this platform or tag')
-for name in ('start', 'install', 'uninstall', 'update', 'github', 'app/bin/sranipatch-server',
+for name in ('start-server', 'start-client', 'install', 'uninstall', 'update', 'github', 'app/bin/sranipatch-server',
              'app/bin/sranipatch-client', 'app/bin/sranipatch-package-control', 'app/driver/driver.vrdrivermanifest'):
     if not (destination / name).is_file():
         raise RuntimeError('Release is missing ' + name)

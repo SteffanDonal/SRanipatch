@@ -38,7 +38,14 @@ def make_package(root, version="v1", platform="linux-arm64"):
             shutil.copy2(FIXTURE, target)
         else:
             target.touch()
-    for command in ("start", "install", "uninstall", "update", "github"):
+    for command in (
+        "start-server",
+        "start-client",
+        "install",
+        "uninstall",
+        "update",
+        "github",
+    ):
         if windows and command == "github":
             shutil.copy2(REPO / "scripts/github.url", root / "github.url")
             continue
@@ -61,7 +68,36 @@ class LinuxUpdateTests(unittest.TestCase):
         make_package(self.root)
         make_package(self.staged, "v2")
 
+    def test_launchers_forward_arguments_to_only_the_requested_application(self):
+        for application in ("server", "client"):
+            executable = self.root / f"app/bin/sranipatch-{application}"
+            with (
+                patch.object(package, "ROOT", self.root),
+                patch.object(
+                    sys, "argv", ["package.py", f"start-{application}", "--help"]
+                ),
+                patch.object(package.os, "execv") as execute,
+            ):
+                # A real exec never returns.
+                execute.side_effect = SystemExit(0)
+                with self.assertRaises(SystemExit):
+                    package.main()
+            execute.assert_called_once_with(executable, [str(executable), "--help"])
+
+    def test_restart_offer_is_silent_when_steamvr_is_stopped(self):
+        with (
+            patch.object(package, "steamvr_running", return_value=False),
+            patch("builtins.print") as output,
+            patch("builtins.open") as terminal,
+            patch.object(package.subprocess, "run") as restart,
+        ):
+            package.offer_restart(False)
+        output.assert_not_called()
+        terminal.assert_not_called()
+        restart.assert_not_called()
+
     def test_portable_update_does_not_register_or_start_idle_apps(self):
+        (self.root / "start").touch()
         state = {"active": False, "managed": False, "revision": 0, "run": False}
         with (
             patch.object(package, "registered", return_value=False),
@@ -73,6 +109,9 @@ class LinuxUpdateTests(unittest.TestCase):
         register.assert_not_called()
         self.assertEqual(package.metadata(self.root)["version"], "v2")
         self.assertEqual(len(list(self.root.glob("app.*.old"))), 1)
+        self.assertTrue((self.root / "start-server").is_file())
+        self.assertTrue((self.root / "start-client").is_file())
+        self.assertFalse((self.root / "start").exists())
 
     def test_registered_update_pauses_and_restores_preference(self):
         state = {"active": True, "managed": True, "revision": 1, "run": True}
@@ -255,6 +294,78 @@ class LinuxProcessTests(unittest.TestCase):
                 for process in package.processes(root):
                     os.kill(process[0], signal.SIGTERM)
                 server.wait(timeout=5)
+
+
+@unittest.skipUnless(os.name == "nt", "Windows package commands")
+class WindowsCommandTests(unittest.TestCase):
+    def invoke(self, command, mocks):
+        source = REPO / "scripts/package.ps1"
+        harness = r"""
+$ErrorActionPreference = 'Stop'
+$NoRestart = $false
+$packageRoot = Split-Path $env:SRANIPATCH_SCRIPT
+$ast = [Management.Automation.Language.Parser]::ParseFile($env:SRANIPATCH_SCRIPT, [ref]$null, [ref]$null)
+$statements = $ast.EndBlock.Statements
+foreach ($statement in $statements) {
+    if ($statement -is [Management.Automation.Language.FunctionDefinitionAst]) {
+        . ([scriptblock]::Create($statement.Extent.Text))
+    }
+}
+function Invoke-OldPackageCleanup {}
+function Register-Driver { param([switch]$Remove) }
+function Read-Host { param($Prompt); Write-Output "PROMPT: $Prompt" | Out-Host; return 'yes' }
+"""
+        harness += mocks + "\n$Command = '" + command + "'\n"
+        harness += r"""
+foreach ($statement in ($statements | Select-Object -Last 2)) {
+    . ([scriptblock]::Create($statement.Extent.Text))
+}
+"""
+        environment = os.environ.copy()
+        environment["SRANIPATCH_SCRIPT"] = str(source)
+        return subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+            timeout=10,
+        )
+
+    def test_uninstall_waits_after_success_and_failure(self):
+        for mocks, code in (
+            ("", 0),
+            ("function Register-Driver { throw 'injected failure' }", 1),
+        ):
+            result = self.invoke("uninstall", mocks)
+            self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+            self.assertIn("Press Enter to exit", result.stdout)
+
+    def test_install_when_steamvr_stopped_waits_without_restart_offer(self):
+        result = self.invoke("install", "function Get-Process {}")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Installed successfully", result.stdout)
+        self.assertIn("Press Enter to exit", result.stdout)
+        self.assertNotIn("Restart SteamVR now", result.stdout)
+
+    def test_restart_does_not_wait_for_process_tree_or_startup(self):
+        result = self.invoke(
+            "install",
+            r"""
+$script:running = $true
+function Get-Process { if ($script:running) { return [pscustomobject]@{ Id = 1 } } }
+function Get-OpenVRPathRegistry { return @{ runtime = @('C:/SteamVR') } }
+function Start-Process {
+    param($FilePath, $ArgumentList, $WindowStyle, [switch]$Wait)
+    if ($Wait) { throw 'Must not wait for process tree' }
+    if ($ArgumentList -eq '-shutdown') { $script:running = $false }
+    else { Write-Output 'RELAUNCH REQUESTED' }
+}
+""",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("RELAUNCH REQUESTED", result.stdout)
+        self.assertNotIn("Press Enter to exit", result.stdout)
 
 
 @unittest.skipUnless(

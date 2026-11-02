@@ -1,11 +1,11 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('start', 'install', 'uninstall', 'update')]
+    [ValidateSet('start-server', 'start-client', 'install', 'uninstall', 'update')]
     [string]$Command,
     [switch]$NoRestart,
     [string]$Archive,
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$ServerArguments
+    [string[]]$ApplicationArguments
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -128,14 +128,14 @@ function Restore-PackageProcess($Snapshot, $State) {
 }
 
 function Show-RestartOffer([bool]$SkipRestart) {
-    if ($SkipRestart) { return }
+    if ($SkipRestart -or -not (Get-Process vrserver -ErrorAction SilentlyContinue)) { return }
     Write-Information 'On Steam Frame, restarting SteamVR will make the display go black temporarily.' -InformationAction Continue
     $answer = Read-Host 'Restart SteamVR now? [y/N]'
     if ($answer -notmatch '^(y|yes)$') { return }
     $paths = Get-OpenVRPathRegistry
     $monitor = Join-Path $paths.runtime[0] 'bin/win64/vrmonitor.exe'
-    Start-Process -FilePath $monitor -ArgumentList '-shutdown' -WindowStyle Hidden -Wait
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    Start-Process -FilePath $monitor -ArgumentList '-shutdown' -WindowStyle Hidden
     while (Get-Process vrserver -ErrorAction SilentlyContinue) {
         if ([DateTime]::UtcNow -gt $deadline) { throw 'SteamVR did not exit. Please restart it manually.' }
         Start-Sleep -Milliseconds 200
@@ -165,7 +165,7 @@ function Assert-Release([string]$Root, [string]$Platform) {
     $info = Get-PackageInfo $Root
     if ($info.platform -ne $Platform -or $info.driver_revision -notmatch '^\d+$') { throw 'Release does not match this platform' }
     foreach ($name in @('app/bin/sranipatch-server.exe', 'app/bin/sranipatch-client.exe', 'app/bin/sranipatch-package-control.exe',
-                       'app/driver/driver.vrdrivermanifest', 'start.cmd', 'install.cmd', 'uninstall.cmd', 'update.cmd', 'github.url')) {
+                       'app/driver/driver.vrdrivermanifest', 'start-server.cmd', 'start-client.cmd', 'install.cmd', 'uninstall.cmd', 'update.cmd', 'github.url')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Root $name) -PathType Leaf)) { throw "Release is missing $name" }
     }
     return $info
@@ -186,9 +186,10 @@ function Install-Update([string]$Staged) {
             Rename-PackageDirectory $backup $app
             throw
         }
-        foreach ($name in @('start.cmd', 'install.cmd', 'uninstall.cmd', 'update.cmd', 'github.url')) {
+        foreach ($name in @('start-server.cmd', 'start-client.cmd', 'install.cmd', 'uninstall.cmd', 'update.cmd', 'github.url')) {
             Copy-Item -LiteralPath (Join-Path $Staged $name) -Destination (Join-Path $packageRoot $name) -Force
         }
+        Remove-Item -LiteralPath (Join-Path $packageRoot 'start.cmd') -Force -ErrorAction SilentlyContinue
         if ($wasRegistered) { Register-Driver }
     } finally {
         if (Test-Path -LiteralPath $app -PathType Container) {
@@ -245,20 +246,24 @@ function Invoke-PackageUpdate([string]$UpdateArchive, [bool]$SkipRestart) {
     }
 }
 
+$waitForEnter = $Command -eq 'uninstall'
 try {
     Invoke-OldPackageCleanup
     switch ($Command) {
-        start {
+        { $_ -in 'start-server', 'start-client' } {
             Push-Location (Join-Path $packageRoot 'app/bin')
             try {
-                & (Join-Path $packageRoot 'app/bin/sranipatch-server.exe') @ServerArguments
+                $application = $Command.Substring('start-'.Length)
+                & (Join-Path $packageRoot "app/bin/sranipatch-$application.exe") @ApplicationArguments
                 exit $LASTEXITCODE
             } finally { Pop-Location }
         }
         install {
+            $steamVRWasRunning = [bool](Get-Process vrserver -ErrorAction SilentlyContinue)
+            $waitForEnter = -not $steamVRWasRunning
             Register-Driver
-            Write-Information 'Registered SRanipatch. SteamVR will load it on its next start.' -InformationAction Continue
-            Show-RestartOffer $NoRestart
+            Write-Information "Installed successfully. SRanipatch will auto-start with SteamVR so long as it's installed and enabled under SteamVR's settings." -InformationAction Continue
+            if ($steamVRWasRunning) { Show-RestartOffer $NoRestart }
         }
         uninstall {
             Register-Driver -Remove
@@ -269,4 +274,6 @@ try {
 } catch {
     [Console]::Error.WriteLine("SRanipatch: $_")
     exit 1
+} finally {
+    if ($waitForEnter) { Read-Host 'Press Enter to exit' | Out-Null }
 }
