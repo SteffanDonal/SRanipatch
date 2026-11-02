@@ -124,7 +124,7 @@ namespace sranipatch
       ImPlot::CreateContext();
       implot = true;
       ImGui::GetIO().IniFilename = nullptr;
-      set_dark_style();
+      set_dark_style(in_overlay);
       ImFontConfig config;
       config.FontDataOwnedByAtlas = false;
       std::snprintf(config.Name, sizeof(config.Name), "Quicksand Medium");

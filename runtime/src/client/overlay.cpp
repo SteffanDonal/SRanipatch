@@ -104,7 +104,11 @@ namespace sranipatch
           quit = true;
           break;
         case vr::VREvent_MouseMove:
+#ifdef _WIN32
+          io.AddMousePosEvent(event.data.mouse.x, event.data.mouse.y);
+#else
           io.AddMousePosEvent(event.data.mouse.x, static_cast<float>(height) - event.data.mouse.y);
+#endif
           break;
         case vr::VREvent_MouseButtonDown:
         case vr::VREvent_MouseButtonUp:

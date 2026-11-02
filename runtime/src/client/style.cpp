@@ -5,7 +5,7 @@
 
 namespace sranipatch
 {
-  void set_dark_style()
+  void set_dark_style(bool in_overlay)
   {
     ImGui::StyleColorsDark();
     auto& style = ImGui::GetStyle();
@@ -21,11 +21,12 @@ namespace sranipatch
 
     auto smoke = ImVec4(0, 0, 0, 0x4D * to_normal);
 
-    auto layer_base =
+    auto layer_base = ImVec4(0x20 * to_normal, 0x20 * to_normal, 0x20 * to_normal, 1);
 #ifdef _WIN32
-      transparent;
+    if (!in_overlay)
+      layer_base = transparent;
 #else
-      ImVec4(0x20 * to_normal, 0x20 * to_normal, 0x20 * to_normal, 1);
+    static_cast<void>(in_overlay);
 #endif
 
     auto layer_main = ImVec4(1, 1, 1, 0x09 * to_normal);

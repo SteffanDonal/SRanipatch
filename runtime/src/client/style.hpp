@@ -2,5 +2,5 @@
 
 namespace sranipatch
 {
-  void set_dark_style();
+  void set_dark_style(bool in_overlay);
 }
