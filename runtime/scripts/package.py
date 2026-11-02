@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 import shutil
 import signal
 import subprocess
@@ -18,6 +19,7 @@ from pathlib import Path
 
 REPOSITORY = "https://github.com/steffandonal/sranipatch"
 API = "https://api.github.com/repos/steffandonal/sranipatch/releases/latest"
+UVC_REPOSITORY = "https://github.com/mavishtheblue/steam-frame-uvc"
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -153,6 +155,136 @@ def restore_processes(root, snapshot):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+
+
+def confirm(question):
+    # The bootstrap may have been invoked through curl | bash.
+    try:
+        with open("/dev/tty", "r+", encoding="utf-8") as terminal:
+            terminal.write(question + " [y/N] ")
+            terminal.flush()
+            return terminal.readline().strip().lower() in ("y", "yes")
+    except OSError:
+        return False
+
+
+def uvc_loaded():
+    return Path("/sys/module/uvcvideo").is_dir()
+
+
+def setup_uvc():
+    data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+    if not data.is_absolute():
+        data = Path.home() / ".local/share"
+    destination = data / "steam-frame-uvc"
+    marker = destination / ".sranipatch-managed"
+
+    def check_destination():
+        if destination.is_symlink() or (
+            destination.exists()
+            and (
+                not destination.is_dir()
+                or marker.is_symlink()
+                or not marker.is_file()
+                or marker.read_text() != UVC_REPOSITORY + "\n"
+            )
+        ):
+            raise RuntimeError(
+                f"UVC setup directory is not installer-managed: {destination}"
+            )
+
+    check_destination()
+    print(f"UVC source: {UVC_REPOSITORY}")
+    print(f"Download location: {destination}")
+    print(
+        "Setup runs upstream's installer, which asks for sudo to install kernel "
+        "modules and a system service. The service loads UVC at boot and may "
+        "download/build modules after kernel updates."
+    )
+    if not confirm("Download and set up USB Video support now?"):
+        raise RuntimeError(
+            "USB Video setup was not approved. Install UVC support and rerun install."
+        )
+    if os.geteuid() == 0:
+        raise RuntimeError(
+            "Run install as your normal user; UVC setup asks for sudo when needed."
+        )
+    data.mkdir(parents=True, exist_ok=True)
+    lock = data / ".sranipatch-uvc-lock"
+    lock.mkdir()  # Do not replace a checkout while another installer uses it.
+    try:
+        check_destination()
+        with tempfile.TemporaryDirectory(
+            prefix=".sranipatch-uvc-", dir=data
+        ) as temporary:
+            temporary = Path(temporary)
+            archive = temporary / "source.tar.gz"
+            download(
+                "https://codeload.github.com/mavishtheblue/steam-frame-uvc/tar.gz/HEAD",
+                archive,
+            )
+            staged = temporary / "source"
+            staged.mkdir()
+            extract(archive, staged)
+            entries = list(staged.iterdir())
+            if len(entries) != 1 or not entries[0].is_dir():
+                raise RuntimeError("Unexpected UVC source archive layout")
+            source = entries[0]
+            for name in ("install.sh", "uninstall.sh", "src/build.sh", "src/load.sh"):
+                script = source / name
+                if not script.is_file():
+                    raise RuntimeError(f"UVC source is missing {name}")
+                script.chmod(script.stat().st_mode | 0o111)
+            (source / marker.name).write_text(UVC_REPOSITORY + "\n")
+            if destination.exists():
+                shutil.rmtree(destination)
+            source.rename(destination)
+        run("bash", destination / "install.sh", cwd=destination)
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            "UVC setup failed; see upstream's output above. Resolve the reported "
+            "problem (including any requested SteamOS update/reboot), then rerun install."
+        ) from error
+    finally:
+        lock.rmdir()
+
+
+def ensure_uvc():
+    if uvc_loaded():
+        return
+    print("USB Video (UVC) support is required to access the facial tracker's camera.")
+    print(f"Steam Frame setup: {UVC_REPOSITORY}")
+    modinfo = shutil.which("modinfo")
+    if (
+        modinfo
+        and subprocess.run(
+            [modinfo, "-k", os.uname().release, "uvcvideo"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode
+        == 0
+    ):
+        print("This kernel already provides the UVC driver; loading it requires sudo.")
+        if not confirm("Load the existing USB Video driver now?"):
+            raise RuntimeError(
+                "UVC driver loading was not approved. Load uvcvideo and rerun install."
+            )
+        run("sudo", "modprobe", "uvcvideo")
+    else:
+        if (
+            os.uname().machine != "aarch64"
+            or platform.freedesktop_os_release().get("ID") != "steamos"
+        ):
+            raise RuntimeError(
+                "Automatic UVC setup requires SteamOS ARM64. Install your distribution's "
+                "uvcvideo kernel driver, load it with sudo modprobe uvcvideo, and rerun install."
+            )
+        setup_uvc()
+    if not uvc_loaded():
+        raise RuntimeError(
+            "UVC driver is still unavailable. Resolve the setup error and rerun install."
+        )
 
 
 def offer_restart(no_restart):
@@ -402,6 +534,7 @@ def main():
     if options.command == "github":
         run("xdg-open", REPOSITORY)
     elif options.command == "install":
+        ensure_uvc()
         register(root)
         print("Registered SRanipatch. SteamVR will load it on its next start.")
         offer_restart(options.no_restart)

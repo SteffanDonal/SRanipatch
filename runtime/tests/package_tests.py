@@ -13,7 +13,7 @@ import time
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, mock_open, patch
 
 REPO = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("package", REPO / "scripts/package.py")
@@ -57,6 +57,195 @@ def make_package(root, version="v1", platform="linux-arm64"):
             (root / command).chmod(0o755)
     script = "package.ps1" if windows else "package.py"
     shutil.copy2(REPO / "scripts" / script, root / "app/scripts" / script)
+
+
+@unittest.skipIf(os.name == "nt", "Linux UVC prerequisite")
+class LinuxUvcTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.data = Path(self.temporary.name)
+        self.destination = self.data / "steam-frame-uvc"
+        self.real_confirm = package.confirm
+        self.enterContext(patch.dict(os.environ, {"XDG_DATA_HOME": str(self.data)}))
+        self.confirm = self.enterContext(
+            patch.object(package, "confirm", return_value=True)
+        )
+        self.loaded = self.enterContext(
+            patch.object(package, "uvc_loaded", return_value=False)
+        )
+        self.run = self.enterContext(patch.object(package, "run"))
+        self.download = self.enterContext(
+            patch.object(package, "download", side_effect=self.source_archive)
+        )
+        self.enterContext(patch.object(package.os, "geteuid", return_value=1000))
+        self.enterContext(
+            patch.object(
+                package.os,
+                "uname",
+                return_value=Mock(machine="aarch64", release="test-kernel"),
+            )
+        )
+        self.enterContext(
+            patch.object(
+                package.platform,
+                "freedesktop_os_release",
+                return_value={"ID": "steamos"},
+            )
+        )
+        self.modinfo = self.enterContext(
+            patch.object(package.shutil, "which", return_value=None)
+        )
+
+    def source_archive(self, url, destination):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "steam-frame-uvc-latest"
+            (source / "src").mkdir(parents=True)
+            for name in ("install.sh", "uninstall.sh", "src/build.sh", "src/load.sh"):
+                (source / name).write_text("#!/bin/bash\n")
+            with tarfile.open(destination, "w:gz") as archive:
+                archive.add(source, arcname=source.name)
+
+    def test_loaded_support_needs_no_camera_prompt_or_setup(self):
+        self.loaded.return_value = True
+        package.ensure_uvc()
+        self.confirm.assert_not_called()
+        self.run.assert_not_called()
+        self.download.assert_not_called()
+
+    def test_existing_driver_is_loaded_without_downloading(self):
+        self.modinfo.return_value = "/usr/bin/modinfo"
+        self.loaded.side_effect = [False, True]
+        with patch.object(package.subprocess, "run", return_value=Mock(returncode=0)):
+            package.ensure_uvc()
+        self.run.assert_called_once_with("sudo", "modprobe", "uvcvideo")
+        self.download.assert_not_called()
+
+    def test_declined_existing_driver_is_not_loaded(self):
+        self.modinfo.return_value = "/usr/bin/modinfo"
+        self.confirm.return_value = False
+        with (
+            patch.object(package.subprocess, "run", return_value=Mock(returncode=0)),
+            self.assertRaisesRegex(RuntimeError, "not approved"),
+        ):
+            package.ensure_uvc()
+        self.run.assert_not_called()
+        self.download.assert_not_called()
+
+    def test_setup_downloads_latest_and_replaces_only_managed_checkout(self):
+        self.loaded.side_effect = [False, True]
+        package.ensure_uvc()
+        self.assertTrue((self.destination / "install.sh").stat().st_mode & 0o111)
+        (self.destination / "old-file").touch()
+        package.setup_uvc()
+        self.assertFalse((self.destination / "old-file").exists())
+        self.assertEqual(self.download.call_count, 2)
+        self.assertTrue(self.download.call_args.args[0].endswith("/tar.gz/HEAD"))
+        self.run.assert_called_with(
+            "bash", self.destination / "install.sh", cwd=self.destination
+        )
+        self.assertFalse((self.data / ".sranipatch-uvc-lock").exists())
+
+    def test_unfamiliar_directory_and_symlinks_are_preserved(self):
+        self.destination.mkdir()
+        sentinel = self.destination / "personal-file"
+        sentinel.write_text("keep")
+        with self.assertRaisesRegex(RuntimeError, "not installer-managed"):
+            package.setup_uvc()
+        self.assertEqual(sentinel.read_text(), "keep")
+        self.download.assert_not_called()
+        other = self.data / "elsewhere"
+        self.destination.rename(other)
+        self.destination.symlink_to(other, target_is_directory=True)
+        with self.assertRaisesRegex(RuntimeError, "not installer-managed"):
+            package.setup_uvc()
+        self.assertEqual((other / "personal-file").read_text(), "keep")
+
+    def test_failed_download_preserves_previous_checkout_and_unlocks(self):
+        package.setup_uvc()
+        sentinel = self.destination / "previous-source"
+        sentinel.touch()
+        self.download.side_effect = OSError("offline")
+        with self.assertRaisesRegex(OSError, "offline"):
+            package.setup_uvc()
+        self.assertTrue(sentinel.exists())
+        self.assertFalse((self.data / ".sranipatch-uvc-lock").exists())
+
+    def test_unsupported_platform_gets_manual_guidance(self):
+        with (
+            patch.object(
+                package.platform,
+                "freedesktop_os_release",
+                return_value={"ID": "debian"},
+            ),
+            self.assertRaisesRegex(RuntimeError, "distribution"),
+        ):
+            package.ensure_uvc()
+        self.confirm.assert_not_called()
+        self.download.assert_not_called()
+
+    def test_setup_success_without_loaded_driver_still_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "still unavailable"):
+            package.ensure_uvc()
+
+    def test_upstream_failure_preserves_checkout_for_retry(self):
+        self.run.side_effect = subprocess.CalledProcessError(1, "install.sh")
+        with self.assertRaisesRegex(RuntimeError, "SteamOS update/reboot"):
+            package.ensure_uvc()
+        self.assertTrue((self.destination / "install.sh").is_file())
+        self.assertFalse((self.data / ".sranipatch-uvc-lock").exists())
+
+    def test_declined_setup_never_changes_registration_even_with_no_restart(self):
+        self.confirm.return_value = False
+        with (
+            patch.object(sys, "argv", ["package.py", "install", "--no-restart"]),
+            patch.object(package, "cleanup"),
+            patch.object(package, "register") as register,
+            self.assertRaisesRegex(RuntimeError, "not approved"),
+        ):
+            package.main()
+        register.assert_not_called()
+        self.run.assert_not_called()
+        self.download.assert_not_called()
+
+    def test_prompt_requires_explicit_yes_and_handles_missing_terminal(self):
+        for answer, accepted in (
+            ("yes\n", True),
+            ("Y\n", True),
+            ("\n", False),
+            ("", False),
+        ):
+            with patch("builtins.open", mock_open(read_data=answer)):
+                self.assertEqual(self.real_confirm("Set up UVC?"), accepted)
+        with patch("builtins.open", side_effect=OSError("no controlling terminal")):
+            self.assertFalse(self.real_confirm("Set up UVC?"))
+
+    def test_successful_install_verifies_support_before_registration(self):
+        events = []
+        self.loaded.side_effect = lambda: events.append("check") or True
+        with (
+            patch.object(sys, "argv", ["package.py", "install", "--no-restart"]),
+            patch.object(package, "cleanup"),
+            patch.object(
+                package, "register", side_effect=lambda root: events.append("register")
+            ),
+            patch.object(package, "offer_restart"),
+        ):
+            package.main()
+        self.assertEqual(events, ["check", "register"])
+
+    def test_noninteractive_install_does_not_download_or_register(self):
+        self.confirm.side_effect = self.real_confirm
+        with (
+            patch("builtins.open", side_effect=OSError("no controlling terminal")),
+            patch.object(sys, "argv", ["package.py", "install"]),
+            patch.object(package, "cleanup"),
+            patch.object(package, "register") as register,
+            self.assertRaisesRegex(RuntimeError, "not approved"),
+        ):
+            package.main()
+        register.assert_not_called()
+        self.download.assert_not_called()
 
 
 class LinuxUpdateTests(unittest.TestCase):
@@ -190,6 +379,13 @@ class LinuxUpdateTests(unittest.TestCase):
             '#!/bin/sh\necho \'{"active":false,"managed":false,"run":false,"revision":0}\'\n'
         )
         helper.chmod(0o755)
+        # Simulate a host with UVC already loaded for the bootstrap subprocess.
+        script = self.staged / "app/scripts/package.py"
+        script.write_text(
+            script.read_text().replace(
+                'return Path("/sys/module/uvcvideo").is_dir()', "return True"
+            )
+        )
         curl = tools / "curl"
         curl.write_text(
             "#!/usr/bin/env python3\nimport os,shutil,sys\nfrom pathlib import Path\n"

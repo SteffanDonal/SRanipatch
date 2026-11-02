@@ -12,6 +12,8 @@ curl -fsSL https://raw.githubusercontent.com/steffandonal/sranipatch/main/runtim
 
 Downloads the latest stable Linux ARM64 release to `~/.local/share/sranipatch` and registers it with SteamVR. To choose a folder, append `-s -- --dir /path/to/sranipatch` to `bash`. SteamVR restart prompts warn that the Frame display will go black temporarily.
 
+Linux installation requires USB Video (UVC) support, even without a camera attached. The installer offers to load an existing driver or, on SteamOS ARM64, set up [steam-frame-uvc](https://github.com/mavishtheblue/steam-frame-uvc) with your consent. Its source is stored in `${XDG_DATA_HOME:-$HOME/.local/share}/steam-frame-uvc`; upstream setup uses sudo and installs a system service. Declining or failed setup stops installation and preserves any existing registration. Uninstalling SRanipatch leaves UVC support installed.
+
 For Windows x64, extract the ZIP from [Releases](https://github.com/steffandonal/sranipatch/releases/latest) and run `install.cmd`.
 
 Package commands (`.cmd` on Windows):
