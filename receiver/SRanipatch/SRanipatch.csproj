@@ -12,8 +12,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="Assets\vive_face_tracker.png" />
-    <EmbeddedResource Include="Assets\vive_face_tracker.png" />
+    <None Remove="icon.png" />
+    <EmbeddedResource Include="../../assets/icon-solid.png" Link="icon.png" />
   </ItemGroup>
 
   <ItemGroup>

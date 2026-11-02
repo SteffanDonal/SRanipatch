@@ -45,6 +45,6 @@ obj/
 bin/
 obj/
 
-# Ignore files in the SRanipalExtTrackingModule folder
-/SRanipalExtTrackingModule/bin/
-/SRanipalExtTrackingModule/obj/
+# Ignore files in the SRanipatch project folder
+/SRanipatch/bin/
+/SRanipatch/obj/

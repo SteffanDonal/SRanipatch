@@ -5,9 +5,9 @@ using VRCFaceTracking.Core.Library;
 using VRCFaceTracking.Core.Params.Data;
 using VRCFaceTracking.Core.Params.Expressions;
 
-namespace SRanipalExtTrackingInterface;
+namespace SRanipatch;
 
-public sealed partial class SRanipalExtTrackingInterface : ExtTrackingModule
+public sealed partial class SRanipatch : ExtTrackingModule
 {
     private OscReceiver? _receiver;
 
@@ -19,11 +19,11 @@ public sealed partial class SRanipalExtTrackingInterface : ExtTrackingModule
     {
         var assembly = System.Reflection.Assembly.GetExecutingAssembly();
         var image = assembly.GetManifestResourceStream(
-            "SRanipalExtTrackingModule.Assets.vive_face_tracker.png");
+            "SRanipatch.icon.png");
 
         ModuleInformation = new ModuleMetadata
         {
-            Name = "SRAnipal on Frame (OSC)",
+            Name = "SRanipatch",
             StaticImages = image is null ? [] : [image],
         };
 

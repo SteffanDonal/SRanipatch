@@ -1,4 +1,4 @@
-namespace SRanipalExtTrackingInterface;
+namespace SRanipatch;
 
 internal enum LipParameter
 {

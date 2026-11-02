@@ -3,11 +3,11 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-namespace SRanipalExtTrackingInterface;
+namespace SRanipatch;
 
 internal sealed class OscReceiver : IDisposable
 {
-    public const string Address = "/sranipal/parameters";
+    public const string Address = "/sranipatch/parameters";
     public static readonly IPEndPoint Endpoint = new(IPAddress.Any, 9337);
 
     private const int ParameterCount = 37;
@@ -106,4 +106,3 @@ internal sealed class OscReceiver : IDisposable
         return offset <= packet.Length;
     }
 }
-
