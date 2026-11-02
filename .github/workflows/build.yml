@@ -17,10 +17,10 @@ jobs:
         include:
           - os: windows-2022
             preset: windows-x64
-            platform: windows-x64
+            package: SRanipatch-Runtime.win-x64
           - os: ubuntu-24.04-arm
             preset: linux-release
-            platform: linux-arm64
+            package: SRanipatch-Runtime.linux-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -38,30 +38,36 @@ jobs:
         run: cmake --preset '${{ matrix.preset }}' -DSRANIPATCH_RELEASE_VERSION="$RELEASE_TAG"
       - run: cmake --build --preset ${{ matrix.preset }} --parallel 2
       - run: ctest --preset ${{ matrix.preset }}
-      - name: Stage applications
-        run: cmake --install build/${{ matrix.preset }} --config Release --component Runtime --prefix build/package
-      - uses: actions/upload-artifact@v4
-        with:
-          name: applications-${{ matrix.os }}
-          path: runtime/build/package/
       - name: Create release archive
         run: cpack --config build/${{ matrix.preset }}/CPackConfig.cmake -C Release
-      - name: Checksum release archives
-        shell: python
-        run: |
-          import hashlib
-          from pathlib import Path
-          for path in Path('../output').iterdir():
-              if path.is_file() and path.name.endswith(('.zip', '.tar.gz')):
-                  path.with_name(path.name + '.sha256').write_text(
-                      hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + path.name + '\n')
       - uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.platform }}
+          name: ${{ matrix.package }}
+          if-no-files-found: error
           path: |
-            output/*.zip
-            output/*.tar.gz
-            output/*.sha256
+            output/${{ matrix.package }}.*
+
+  receiver:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: benaclejames/VRCFaceTracking
+          ref: e3f40dd1fdd5e03a645a32691cbf54b4a99afbdd
+          path: upstream-vrcft
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build VRCFaceTracking references
+        run: dotnet build upstream-vrcft/VRCFaceTracking.Core/VRCFaceTracking.Core.csproj -c Release -o "${{ runner.temp }}/vrcft-references"
+      - name: Package Receiver
+        run: dotnet publish receiver/SRanipatch/SRanipatch.csproj -c Release -p:VrcftDirectory="${{ runner.temp }}/vrcft-references"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRanipatch.VRCFT.win-x64
+          if-no-files-found: error
+          path: output/SRanipatch.VRCFT.win-x64.zip
 
   cross:
     defaults:

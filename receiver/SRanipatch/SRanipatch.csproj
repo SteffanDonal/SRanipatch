@@ -18,7 +18,8 @@
       >$(SolutionDir)</PackageRoot>
     <PackageRoot Condition="'$(PackageRoot)' == ''">$(MSBuildProjectDirectory)\..\</PackageRoot>
     <PackageDir Condition="'$(PackageDir)' == ''">$(MSBuildProjectDirectory)\..\..\output</PackageDir>
-    <PackagePath Condition="'$(PackagePath)' == ''">$(PackageDir)\$(AssemblyName).VRCFT.$(NETCoreSdkRuntimeIdentifier).zip</PackagePath>
+    <PackagePath Condition="'$(PackagePath)' == ''">$(PackageDir)\SRanipatch.VRCFT.win-x64.zip</PackagePath>
+    <VrcftDirectory Condition="'$(VrcftDirectory)' == ''">C:\Program Files (x86)\Steam\steamapps\common\VRCFaceTracking</VrcftDirectory>
   </PropertyGroup>
   <Target Name="Package" AfterTargets="Publish">
     <MakeDir Directories="$(PackageDir)" />
@@ -50,11 +51,11 @@
 
   <ItemGroup>
     <Reference Include="VRCFaceTracking.Core">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\VRCFaceTracking\VRCFaceTracking.Core.dll</HintPath>
+      <HintPath>$(VrcftDirectory)\VRCFaceTracking.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="VRCFaceTracking.SDK">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\VRCFaceTracking\VRCFaceTracking.SDK.dll</HintPath>
+      <HintPath>$(VrcftDirectory)\VRCFaceTracking.SDK.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

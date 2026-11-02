@@ -1,20 +1,18 @@
 # SRanipatch
 
-Unofficial SRanipal runtime for the VIVE Facial Tracker & VRCFT on Windows and Steam Frame
-
-C++20 server and Dear ImGui client. The server owns capture, MNN CPU inference and OSC UDP output. The client reads status and parameters through local mapped memory.
+Tracking runtime for the VIVE Facial Tracker on Windows and Steam Frame. The server captures and sends tracking data; the client displays status and previews.
 
 ## Install on Frame
+
+Start with the [headset setup guide](../README.md#setup) for Receiver installation and the Windows Firewall step required by Steam Frame.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/steffandonal/sranipatch/main/runtime/scripts/get.sh | bash
 ```
 
-Downloads the latest stable Linux ARM64 release to `~/.local/share/sranipatch` and registers it with SteamVR. To choose a folder, append `-s -- --dir /path/to/sranipatch` to `bash`. SteamVR restart prompts warn that the Frame display will go black temporarily.
+Installs to `~/.local/share/sranipatch` and registers with SteamVR. To choose a folder, append `-s -- --dir /path/to/sranipatch` to `bash`. Restarting SteamVR temporarily makes the Frame display go black.
 
-Linux installation requires USB Video (UVC) support, even without a camera attached. The installer offers to load an existing driver or, on SteamOS ARM64, set up [steam-frame-uvc](https://github.com/mavishtheblue/steam-frame-uvc) with your consent. Its source is stored in `${XDG_DATA_HOME:-$HOME/.local/share}/steam-frame-uvc`; upstream setup uses sudo and installs a system service. Declining or failed setup stops installation and preserves any existing registration. Uninstalling SRanipatch leaves UVC support installed.
-
-For Windows x64, extract the ZIP from [Releases](https://github.com/steffandonal/sranipatch/releases/latest) and run `install.cmd`.
+Linux installation requires USB Video (UVC) support. If it is missing, the installer offers to set up [steam-frame-uvc](https://github.com/mavishtheblue/steam-frame-uvc); this can require sudo. Uninstalling SRanipatch leaves UVC support installed.
 
 Package commands (`.cmd` on Windows):
 
@@ -25,13 +23,13 @@ Package commands (`.cmd` on Windows):
 - `update`: install the latest stable release, preserving settings and whether this folder is registered.
 - `github`: open the project repository (`github.url` on Windows).
 
-Updates briefly stop and relaunch running applications. SteamVR can stay active; only a changed driver revision prompts a restart. Old package directories are cleaned up on subsequent command launches when unlocked. Move an installed folder only after uninstalling, then run `install` at its new location. `--no-restart` (`-NoRestart` on Windows) suppresses restart prompts.
+Move an installed folder only after uninstalling, then run `install` at its new location. `--no-restart` (`-NoRestart` on Windows) suppresses restart prompts.
 
 ## Build
 
 Run build commands from `runtime/`. Final packages are written to `../output/`.
 
-CMake 3.25+, Git LFS and a C++20 compiler. Run `git lfs pull` after cloning to download binary assets. Dependencies are pinned and fetched during configuration; `FETCHCONTENT_SOURCE_DIR_MNN`, `FETCHCONTENT_SOURCE_DIR_OPENCV`, `FETCHCONTENT_SOURCE_DIR_GLFW` and `FETCHCONTENT_SOURCE_DIR_IMGUI` accept local source trees.
+CMake 3.25+, Git LFS and a C++20 compiler are required. Run `git lfs pull` after cloning. Dependencies are fetched during configuration.
 
 Windows x64: Visual Studio 2022 with Desktop development with C++ and a Windows SDK.
 
@@ -41,7 +39,7 @@ cmake --build --preset windows-x64 --parallel
 ctest --preset windows-x64
 ```
 
-With Visual Studio 2026, add `-G "Visual Studio 18 2026"` to configuration. Executables are in `build/windows-x64/Release`.
+Executables are in `build/windows-x64/Release`.
 
 Linux (including native AArch64): GCC 12+ or Clang 16+, Ninja, OpenGL, X11 and Wayland development headers.
 
@@ -52,9 +50,11 @@ cmake --build --preset linux-release --parallel
 ctest --preset linux-release
 ```
 
-Set `-DSRANIPATCH_BUILD_CLIENT=OFF` for a headless server. The `linux-aarch64` preset cross-compiles the server using `aarch64-linux-gnu-gcc/g++`; `SRANIPATCH_SYSROOT` can point to a deployment sysroot. Build the GUI natively on ARM64 or supply target graphics dependencies when cross-compiling it. Release builds enable application LTO when supported; no host-specific CPU flags are applied.
+Set `-DSRANIPATCH_BUILD_CLIENT=OFF` for a headless server. The `linux-aarch64` preset cross-compiles the server; `SRANIPATCH_SYSROOT` can point to a deployment sysroot.
 
-Stage deployment files with `cmake --install build/<preset> --config Release --component Runtime --prefix build/package`. This includes dependency notices and the MSVC runtime on Windows. Linux deployments need compatible system libraries; the GUI requires OpenGL 3.3. CPack configurations produce ZIP/TGZ archives.
+Stage deployment files with `cmake --install build/<preset> --config Release --component Runtime --prefix build/package`. Linux deployments need compatible system libraries; the GUI requires OpenGL 3.3.
+
+Create a package with `cpack --config build/<preset>/CPackConfig.cmake -C Release`. See [release instructions](../docs/releases.md) for publication.
 
 ## Run
 

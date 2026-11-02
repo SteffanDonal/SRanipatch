@@ -160,10 +160,13 @@ def restore_processes(root, snapshot):
 def confirm(question):
     # The bootstrap may have been invoked through curl | bash.
     try:
-        with open("/dev/tty", "r+", encoding="utf-8") as terminal:
-            terminal.write(question + " [y/N] ")
-            terminal.flush()
-            return terminal.readline().strip().lower() in ("y", "yes")
+        with (
+            open("/dev/tty", "r", encoding="utf-8") as reader,
+            open("/dev/tty", "w", encoding="utf-8") as writer,
+        ):
+            writer.write(question + " [y/N] ")
+            writer.flush()
+            return reader.readline().strip().lower() in ("y", "yes")
     except OSError:
         return False
 
@@ -295,10 +298,13 @@ def offer_restart(no_restart):
     )
     # curl | bash still needs to read the answer from the user's terminal.
     try:
-        with open("/dev/tty", "r+", encoding="utf-8") as terminal:
-            terminal.write("Restart SteamVR now? [y/N] ")
-            terminal.flush()
-            answer = terminal.readline().strip().lower()
+        with (
+            open("/dev/tty", "r", encoding="utf-8") as reader,
+            open("/dev/tty", "w", encoding="utf-8") as writer,
+        ):
+            writer.write("Restart SteamVR now? [y/N] ")
+            writer.flush()
+            answer = reader.readline().strip().lower()
     except OSError:
         print("Restart SteamVR when convenient to apply the driver change.")
         return
@@ -379,7 +385,7 @@ def fetch_release(directory, platform):
     response = directory / "release.json"
     download(API, response)
     release = json.loads(response.read_text())
-    filename = f"sranipatch-{platform}.tar.gz"
+    filename = f"SRanipatch-Runtime.{platform}.tar.gz"
     assets = {
         asset["name"]: asset["browser_download_url"] for asset in release["assets"]
     }
