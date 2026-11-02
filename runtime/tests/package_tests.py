@@ -257,6 +257,57 @@ class LinuxUpdateTests(unittest.TestCase):
         make_package(self.root)
         make_package(self.staged, "v2")
 
+    def test_remote_update_selects_runtime_asset_and_checks_checksum(self):
+        filename = "SRanipatch-Runtime.linux-arm64.tar.gz"
+        assets = Path(self.temporary.name) / "assets"
+        assets.mkdir()
+        with tarfile.open(assets / filename, "w:gz") as archive:
+            for child in self.staged.iterdir():
+                archive.add(child, arcname=child.name)
+        (assets / "release.json").write_text(
+            json.dumps(
+                {
+                    "tag_name": "v2",
+                    "assets": [
+                        {
+                            "name": name,
+                            "browser_download_url": "https://fixture/" + name,
+                        }
+                        for name in (
+                            filename,
+                            filename + ".sha256",
+                            "SRanipatch.VRCFT.win-x64.zip",
+                        )
+                    ],
+                }
+            )
+        )
+
+        def download(url, destination):
+            name = "release.json" if url == package.API else url.rsplit("/", 1)[-1]
+            shutil.copy2(assets / name, destination)
+
+        state = {"active": False, "managed": False, "revision": 0, "run": False}
+        with (
+            patch.object(package, "download", side_effect=download),
+            patch.object(package, "registered", return_value=False),
+            patch.object(package, "control", return_value=state),
+            patch.object(package, "processes", return_value=[]),
+        ):
+            # A corrupt download must leave the installed version untouched.
+            (assets / (filename + ".sha256")).write_text("0" * 64 + "  " + filename)
+            with self.assertRaisesRegex(RuntimeError, "checksum"):
+                package.update(self.root)
+            self.assertEqual(package.metadata(self.root)["version"], "v1")
+            (assets / (filename + ".sha256")).write_text(
+                hashlib.sha256((assets / filename).read_bytes()).hexdigest()
+                + "  "
+                + filename
+            )
+            package.update(self.root)
+        self.assertEqual(package.metadata(self.root)["version"], "v2")
+        self.assertFalse((self.root / ".update-lock").exists())
+
     def test_launchers_forward_arguments_to_only_the_requested_application(self):
         for application in ("server", "client"):
             executable = self.root / f"app/bin/sranipatch-{application}"
@@ -407,7 +458,7 @@ class LinuxUpdateTests(unittest.TestCase):
                 "SRANIPATCH_TEST_LOG": str(directory / "registration.log"),
             }
         )
-        filename = "sranipatch-linux-arm64.tar.gz"
+        filename = "SRanipatch-Runtime.linux-arm64.tar.gz"
         for version in ("v2", "v3"):
             info = package.metadata(self.staged)
             info["version"] = version
@@ -494,6 +545,102 @@ class LinuxProcessTests(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "Windows package commands")
 class WindowsCommandTests(unittest.TestCase):
+    def invoke_function(self, body):
+        source = REPO / "scripts/package.ps1"
+        harness = r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile($env:SRANIPATCH_SCRIPT, [ref]$null, [ref]$null)
+foreach ($statement in $ast.EndBlock.Statements) {
+    if ($statement -is [Management.Automation.Language.FunctionDefinitionAst]) {
+        . ([scriptblock]::Create($statement.Extent.Text))
+    }
+}
+""" + body
+        return subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", harness],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "SRANIPATCH_SCRIPT": str(source)},
+            timeout=10,
+        )
+
+    def test_expand_release_accepts_normalized_destination(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            archive = directory / "release.zip"
+            with zipfile.ZipFile(archive, "w") as output:
+                output.writestr("app/package.json", "{}")
+            result = self.invoke_function(
+                "$parent = '" + str(directory).replace("'", "''") + "'\n"
+                "$destination = Join-Path $parent 'staging/../package'\n"
+                "Expand-Release '" + str(archive).replace("'", "''") + "' $destination\n"
+                "if (-not (Test-Path (Join-Path $parent 'package/app/package.json'))) { throw 'Missing extracted file' }\n"
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_expand_release_rejects_traversal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            archive = directory / "release.zip"
+            with zipfile.ZipFile(archive, "w") as output:
+                output.writestr("../outside.txt", "unsafe")
+            result = self.invoke_function(
+                "Expand-Release '"
+                + str(archive).replace("'", "''")
+                + "' '"
+                + str(directory / "package").replace("'", "''")
+                + "'\n"
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Unsafe entry in release archive", result.stderr)
+            self.assertFalse((directory / "outside.txt").exists())
+
+    def test_process_stop_uses_cim_path_when_get_process_path_is_missing(self):
+        result = self.invoke_function(r"""
+$script:stopped = $false
+function Get-Process { $process = [pscustomobject]@{ Path = $null }; $process | Add-Member ScriptMethod WaitForExit { return $true }; return $process }
+function Get-CimInstance { [pscustomobject]@{ ExecutablePath = 'C:\package\server.exe' } }
+function Stop-Process { $script:stopped = $true }
+Invoke-PackageProcessStop @([pscustomobject]@{ ProcessId = 42; ExecutablePath = 'C:\package\server.exe'; Name = 'sranipatch-server.exe' })
+if (-not $script:stopped) { throw 'Matching process was not stopped' }
+""")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_package_process_discovery_uses_pid_when_name_filter_misses(self):
+        result = self.invoke_function(r"""
+$packageRoot = 'C:\package'
+function Get-Process {
+    [pscustomobject]@{ Id = 42; Path = 'C:\package\app\bin\sranipatch-server.exe' }
+}
+function Get-CimInstance {
+    param($ClassName, $Filter)
+    if ($Filter -like 'Name*') { return }
+    [pscustomobject]@{
+        ProcessId = 42
+        ExecutablePath = 'C:\package\app\bin\sranipatch-server.exe'
+        CommandLine = '"C:\package\app\bin\sranipatch-server.exe" --record log.txt'
+        Name = 'sranipatch-server.exe'
+    }
+}
+$snapshot = @(Get-PackageProcess)
+if ($snapshot.Count -ne 1 -or $snapshot[0].ProcessId -ne 42) { throw 'Package process was not discovered' }
+""")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_rename_accepts_root_with_trailing_separator(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "app").mkdir()
+            result = self.invoke_function(
+                "$packageRoot = '"
+                + str(root).replace("'", "''")
+                + "' + [IO.Path]::DirectorySeparatorChar\n"
+                "Rename-PackageDirectory (Join-Path $packageRoot 'app') (Join-Path $packageRoot 'app.old')\n"
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue((root / "app.old").is_dir())
+
     def invoke(self, command, mocks):
         source = REPO / "scripts/package.ps1"
         harness = r"""
@@ -536,6 +683,71 @@ foreach ($statement in ($statements | Select-Object -Last 2)) {
             result = self.invoke("uninstall", mocks)
             self.assertEqual(result.returncode, code, result.stdout + result.stderr)
             self.assertIn("Press Enter to exit", result.stdout)
+
+    def test_remote_update_selects_runtime_asset_and_checks_checksum(self):
+        with tempfile.TemporaryDirectory(prefix="sranipatch download ") as temporary:
+            directory = Path(temporary)
+            root, staged, assets = (
+                directory / "installed",
+                directory / "staged",
+                directory / "assets",
+            )
+            make_package(root, platform="windows-x64")
+            make_package(staged, "v2", platform="windows-x64")
+            assets.mkdir()
+            filename = "SRanipatch-Runtime.win-x64.zip"
+            with zipfile.ZipFile(assets / filename, "w") as archive:
+                for file in staged.rglob("*"):
+                    if file.is_file():
+                        archive.write(file, file.relative_to(staged))
+            (assets / "release.json").write_text(
+                json.dumps(
+                    {
+                        "tag_name": "v2",
+                        "assets": [
+                            {
+                                "name": name,
+                                "browser_download_url": "https://fixture/" + name,
+                            }
+                            for name in (
+                                filename,
+                                filename + ".sha256",
+                                "SRanipatch.VRCFT.win-x64.zip",
+                            )
+                        ],
+                    }
+                )
+            )
+            mocks = (
+                "$packageRoot = '" + str(root).replace("'", "''") + "'\n"
+                "$script:assets = '"
+                + str(assets).replace("'", "''")
+                + "'\n"
+                + r"""
+function Invoke-RestMethod { Get-Content -Raw (Join-Path $script:assets 'release.json') | ConvertFrom-Json }
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    Copy-Item -LiteralPath (Join-Path $script:assets ([Uri]$Uri).Segments[-1]) -Destination $OutFile
+}
+function Test-Registered { return $false }
+function Invoke-Control { return @{ active = $false; managed = $false; revision = 0; run = $false } }
+function Get-PackageProcess {}
+"""
+            )
+            (assets / (filename + ".sha256")).write_text("0" * 64 + "  " + filename)
+            result = self.invoke("update", mocks)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("checksum", result.stderr)
+            self.assertEqual(package.metadata(root)["version"], "v1")
+            (assets / (filename + ".sha256")).write_text(
+                hashlib.sha256((assets / filename).read_bytes()).hexdigest()
+                + "  "
+                + filename
+            )
+            result = self.invoke("update", mocks)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(package.metadata(root)["version"], "v2")
+            self.assertFalse((root / ".update-lock").exists())
 
     def test_install_when_steamvr_stopped_waits_without_restart_offer(self):
         result = self.invoke("install", "function Get-Process {}")
@@ -589,6 +801,59 @@ class WindowsUpdateTests(unittest.TestCase):
                     if time.monotonic() > deadline:
                         self.fail("fixture server did not start")
                     time.sleep(0.05)
+                probe_environment = {
+                    **os.environ,
+                    "SRANIPATCH_SCRIPT": str(root / "app/scripts/package.ps1"),
+                    "SRANIPATCH_TEST_ROOT": str(root),
+                    "SRANIPATCH_TEST_PID": str(server.pid),
+                }
+                probe_script = r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile($env:SRANIPATCH_SCRIPT, [ref]$null, [ref]$null)
+foreach ($statement in $ast.EndBlock.Statements) {
+    if ($statement -is [Management.Automation.Language.FunctionDefinitionAst]) {
+        . ([scriptblock]::Create($statement.Extent.Text))
+    }
+}
+$packageRoot = $env:SRANIPATCH_TEST_ROOT
+Get-PackageProcess | Select-Object -ExpandProperty ProcessId
+"""
+
+                def process_snapshot():
+                    return subprocess.run(
+                        ["powershell.exe", "-NoProfile", "-Command", probe_script],
+                        check=False,
+                        env=probe_environment,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+
+                snapshot = process_snapshot()
+                self.assertEqual(snapshot.returncode, 0, snapshot.stderr)
+                if str(server.pid) not in snapshot.stdout.splitlines():
+                    diagnostic = subprocess.run(
+                        [
+                            "powershell.exe",
+                            "-NoProfile",
+                            "-Command",
+                            r"$p = Get-Process -Id $env:SRANIPATCH_TEST_PID -ErrorAction SilentlyContinue; "
+                            r"$c = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + $env:SRANIPATCH_TEST_PID); "
+                            r"[pscustomobject]@{ ProcessName = $p.ProcessName; ProcessPath = $p.Path; "
+                            r"CimName = $c.Name; CimPath = $c.ExecutablePath; "
+                            r"CommandLine = $c.CommandLine } | ConvertTo-Json -Compress",
+                        ],
+                        check=False,
+                        env=probe_environment,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    self.fail(
+                        f"Fixture process {server.pid} was not discovered; "
+                        f"snapshot={snapshot.stdout!r}; diagnostic={diagnostic.stdout!r}; "
+                        f"errors={diagnostic.stderr!r}"
+                    )
                 archive = directory / "release.zip"
                 with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as output:
                     for file in staged.rglob("*"):
@@ -596,7 +861,7 @@ class WindowsUpdateTests(unittest.TestCase):
                             output.write(file, file.relative_to(staged))
                 environment = os.environ.copy()
                 environment["LOCALAPPDATA"] = str(directory / "empty-settings")
-                for version in ("v2", "v3", "v3"):
+                for index, version in enumerate(("v2", "v3", "v3")):
                     info = package.metadata(staged)
                     info["version"] = version
                     (staged / "app/package.json").write_text(json.dumps(info))
@@ -627,6 +892,20 @@ class WindowsUpdateTests(unittest.TestCase):
                     self.assertEqual(
                         result.returncode, 0, result.stdout + result.stderr
                     )
+                    if index < 2:
+                        deadline = time.monotonic() + 5
+                        while (
+                            len(record.read_text().splitlines()) < index + 2
+                            and time.monotonic() < deadline
+                        ):
+                            time.sleep(0.05)
+                        self.assertGreaterEqual(
+                            len(record.read_text().splitlines()),
+                            index + 2,
+                            f"Server did not relaunch after {version}; "
+                            f"initial server alive={server.poll() is None}; "
+                            f"process snapshot={process_snapshot().stdout!r}",
+                        )
                 self.assertEqual(package.metadata(root)["version"], "v3")
                 self.assertTrue(loaded.HmdDriverFactory)
                 deadline = time.monotonic() + 5

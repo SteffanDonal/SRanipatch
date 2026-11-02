@@ -50,8 +50,9 @@ function Invoke-OldPackageCleanup {
 }
 
 function Rename-PackageDirectory([string]$Source, [string]$Destination) {
+    $root = [IO.Path]::GetFullPath($packageRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
     foreach ($path in @($Source, $Destination)) {
-        if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($path)) -ne $packageRoot) {
+        if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($path)) -ne $root) {
             throw 'Package rename must stay within its root directory'
         }
     }
@@ -96,15 +97,30 @@ namespace SRanipatch {
 
 function Get-PackageProcess {
     $bin = [IO.Path]::GetFullPath((Join-Path $packageRoot 'app/bin'))
-    Get-CimInstance Win32_Process -Filter "Name = 'sranipatch-server.exe' OR Name = 'sranipatch-client.exe'" | Where-Object {
-        $_.ExecutablePath -and [IO.Path]::GetDirectoryName($_.ExecutablePath) -eq $bin
+    Get-Process -Name 'sranipatch-server', 'sranipatch-client' -ErrorAction SilentlyContinue | ForEach-Object {
+        $entry = Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction Stop
+        $path = if ($entry.ExecutablePath) { $entry.ExecutablePath } else { $_.Path }
+        if ($path -and [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($path)) -eq $bin) {
+            if (-not $entry) { throw "Could not inspect package process $($_.Id)" }
+            [pscustomobject]@{
+                ProcessId = $_.Id
+                ExecutablePath = $path
+                CommandLine = $entry.CommandLine
+                Name = [IO.Path]::GetFileName($path)
+            }
+        }
     }
 }
 
 function Invoke-PackageProcessStop($Snapshot) {
     foreach ($entry in $Snapshot) {
         $process = Get-Process -Id $entry.ProcessId -ErrorAction SilentlyContinue
-        if ($process -and $process.Path -eq $entry.ExecutablePath) {
+        if (-not $process) { continue }
+        $path = $process.Path
+        if (-not $path) {
+            $path = (Get-CimInstance Win32_Process -Filter "ProcessId = $($entry.ProcessId)" -ErrorAction SilentlyContinue).ExecutablePath
+        }
+        if ($path -eq $entry.ExecutablePath) {
             $process | Stop-Process -Force
             if (-not $process.WaitForExit(10000)) { throw "Timed out stopping $($entry.Name)" }
         }
@@ -145,11 +161,12 @@ function Show-RestartOffer([bool]$SkipRestart) {
 
 function Expand-Release([string]$Path, [string]$Destination) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $destinationRoot = [IO.Path]::GetFullPath($Destination).TrimEnd([IO.Path]::DirectorySeparatorChar)
     $zip = [IO.Compression.ZipFile]::OpenRead($Path)
     try {
         foreach ($entry in $zip.Entries) {
-            $target = [IO.Path]::GetFullPath((Join-Path $Destination $entry.FullName))
-            if (-not $target.StartsWith($Destination + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+            $target = [IO.Path]::GetFullPath((Join-Path $destinationRoot $entry.FullName))
+            if (-not $target.StartsWith($destinationRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
                 throw 'Unsafe entry in release archive'
             }
         }
@@ -217,7 +234,7 @@ function Invoke-PackageUpdate([string]$UpdateArchive, [bool]$SkipRestart) {
             $release = Invoke-RestMethod 'https://api.github.com/repos/steffandonal/sranipatch/releases/latest'
             $releaseTag = $release.tag_name
             if ($releaseTag -eq $current.version) { Write-Information 'SRanipatch is already up to date.' -InformationAction Continue; return }
-            $filename = "sranipatch-$($current.platform).zip"
+            $filename = 'SRanipatch-Runtime.win-x64.zip'
             $asset = $release.assets | Where-Object name -eq $filename
             $checksum = $release.assets | Where-Object name -eq "$filename.sha256"
             if (-not $asset -or -not $checksum) { throw "Release is missing $filename or its checksum" }
@@ -226,7 +243,11 @@ function Invoke-PackageUpdate([string]$UpdateArchive, [bool]$SkipRestart) {
             $checksumPath = Join-Path $temporary 'checksum'
             Invoke-WebRequest -UseBasicParsing $checksum.browser_download_url -OutFile $checksumPath
             $expected = ((Get-Content -Raw -LiteralPath $checksumPath).Trim() -split '\s+')[0]
-            if ((Get-FileHash -LiteralPath $localArchive -Algorithm SHA256).Hash -ne $expected) { throw 'Release checksum does not match' }
+            $sha256 = [Security.Cryptography.SHA256]::Create()
+            $archiveStream = [IO.File]::OpenRead($localArchive)
+            try { $actual = [BitConverter]::ToString($sha256.ComputeHash($archiveStream)).Replace('-', '') }
+            finally { $archiveStream.Dispose(); $sha256.Dispose() }
+            if ($actual -ne $expected) { throw 'Release checksum does not match' }
         }
         $staged = Join-Path $temporary 'package'
         Expand-Release ([IO.Path]::GetFullPath($localArchive)) $staged

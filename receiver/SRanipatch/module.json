@@ -3,8 +3,8 @@
   "Version": "1.0.0",
   "AuthorName": "SteffanDonal",
   "ModuleName": "SRanipatch",
-  "ModuleDescription": "",
-  "UsageInstructions": "",
+  "ModuleDescription": "Receives VIVE Facial Tracker data from SRanipatch Runtime.",
+  "UsageInstructions": "Install SRanipatch Runtime for your headset. Steam Frame users must also allow inbound UDP port 9337 through Windows Firewall on their PC. Setup: https://github.com/SteffanDonal/SRanipatch#setup",
   "ModulePageUrl": "https://github.com/SteffanDonal/sranipatch",
   "DllFileName": "SRanipatch.dll"
 }

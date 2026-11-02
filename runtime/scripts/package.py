@@ -379,7 +379,7 @@ def fetch_release(directory, platform):
     response = directory / "release.json"
     download(API, response)
     release = json.loads(response.read_text())
-    filename = f"sranipatch-{platform}.tar.gz"
+    filename = f"SRanipatch-Runtime.{platform}.tar.gz"
     assets = {
         asset["name"]: asset["browser_download_url"] for asset in release["assets"]
     }

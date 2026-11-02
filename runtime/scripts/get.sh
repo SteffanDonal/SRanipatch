@@ -34,11 +34,11 @@ import sys
 directory = Path(sys.argv[1])
 release = json.loads((directory / 'release.json').read_text())
 assets = {asset['name']: asset['browser_download_url'] for asset in release['assets']}
-filename = 'sranipatch-linux-arm64.tar.gz'
+filename = 'SRanipatch-Runtime.linux-arm64.tar.gz'
 for name in (filename, filename + '.sha256'):
     (directory / (name + '.url')).write_text(assets[name])
 PY
-filename=sranipatch-linux-arm64.tar.gz
+filename=SRanipatch-Runtime.linux-arm64.tar.gz
 curl -fsSL "$(cat "$temporary/$filename.url")" -o "$temporary/$filename"
 curl -fsSL "$(cat "$temporary/$filename.sha256.url")" -o "$temporary/$filename.sha256"
 expected=$(python3 -c 'import sys; print(open(sys.argv[1]).read().split()[0])' "$temporary/$filename.sha256")
