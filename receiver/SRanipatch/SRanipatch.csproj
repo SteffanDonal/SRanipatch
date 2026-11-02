@@ -1,28 +1,61 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Platforms>x64</Platforms>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageRoot Condition="'$(SolutionDir)' != '' and '$(SolutionDir)' != '*Undefined*'"
+      >$(SolutionDir)</PackageRoot>
+    <PackageRoot Condition="'$(PackageRoot)' == ''">$(MSBuildProjectDirectory)\..\</PackageRoot>
+    <PackageDir Condition="'$(PackageDir)' == ''">$(MSBuildProjectDirectory)\..\..\output</PackageDir>
+    <PackagePath Condition="'$(PackagePath)' == ''">$(PackageDir)\$(AssemblyName).VRCFT.$(NETCoreSdkRuntimeIdentifier).zip</PackagePath>
+  </PropertyGroup>
+  <Target Name="Package" AfterTargets="Publish">
+    <MakeDir Directories="$(PackageDir)" />
+    <ZipDirectory
+      Overwrite="true"
+      SourceDirectory="$(PublishDir)"
+      DestinationFile="$(PackagePath)"
+    />
+  </Target>
+  <Target Name="PackageClean" AfterTargets="Clean">
+    <Delete Files="$(PackagePath)" />
+  </Target>
+
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" />
+    <PackageReference
+      Include="Microsoft.Extensions.Logging.Abstractions"
+      Version="10.0.14"
+      PrivateAssets="all"
+    />
   </ItemGroup>
 
   <ItemGroup>
     <None Remove="icon.png" />
     <EmbeddedResource Include="../../assets/icon-solid.png" Link="icon.png" />
+    <None Update="module.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
     <Reference Include="VRCFaceTracking.Core">
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\VRCFaceTracking\VRCFaceTracking.Core.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="VRCFaceTracking.SDK">
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\VRCFaceTracking\VRCFaceTracking.SDK.dll</HintPath>
+      <Private>false</Private>
     </Reference>
   </ItemGroup>
-
 </Project>
