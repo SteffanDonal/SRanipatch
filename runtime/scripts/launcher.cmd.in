@@ -1,0 +1,3 @@
+@echo off
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0app\scripts\package.ps1" -Command @command@ %*
+exit /b %errorlevel%

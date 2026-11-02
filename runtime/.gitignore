@@ -3,6 +3,7 @@
 /CMakeUserPresets.json
 /.vs/
 /.idea/
+__pycache__/
 *.user
 *.profraw
 *.profdata

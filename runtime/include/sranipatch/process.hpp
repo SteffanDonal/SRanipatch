@@ -51,4 +51,5 @@ namespace sranipatch
   };
 
   std::filesystem::path executable_directory();
+  void cleanup_old_packages() noexcept;
 }

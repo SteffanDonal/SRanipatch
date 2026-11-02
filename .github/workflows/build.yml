@@ -17,17 +17,25 @@ jobs:
         include:
           - os: windows-2022
             preset: windows-x64
+            platform: windows-x64
           - os: ubuntu-24.04-arm
             preset: linux-release
+            platform: linux-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch runtime model
-        run: git lfs pull --include="assets/models/lip_model.mnn"
+      - name: Fetch runtime assets
+        run: git lfs pull --include="assets/models/lip_model.mnn,runtime/assets/head.glb"
       - name: Linux GUI build dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libwayland-dev libxkbcommon-dev wayland-protocols extra-cmake-modules
       - run: cmake --preset ${{ matrix.preset }}
+      - name: Set release identity
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: cmake --preset '${{ matrix.preset }}' -DSRANIPATCH_RELEASE_VERSION="$RELEASE_TAG"
       - run: cmake --build --preset ${{ matrix.preset }} --parallel 2
       - run: ctest --preset ${{ matrix.preset }}
       - name: Stage applications
@@ -36,6 +44,50 @@ jobs:
         with:
           name: applications-${{ matrix.os }}
           path: runtime/build/package/
+      - name: Create release archive
+        run: cpack --config build/${{ matrix.preset }}/CPackConfig.cmake -C Release
+      - name: Checksum release archives
+        shell: python
+        run: |
+          import hashlib
+          from pathlib import Path
+          for path in Path('../output').iterdir():
+              if path.is_file() and path.name.endswith(('.zip', '.tar.gz')):
+                  path.with_name(path.name + '.sha256').write_text(
+                      hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + path.name + '\n')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            output/*.zip
+            output/*.tar.gz
+            output/*.sha256
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [native, cross, sanitizers]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: output
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" output/* --clobber
+          else
+            flags=()
+            if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
+            gh release create "$RELEASE_TAG" output/* --verify-tag --generate-notes "${flags[@]}"
+          fi
 
   cross:
     defaults:

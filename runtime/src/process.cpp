@@ -385,4 +385,30 @@ namespace sranipatch
     return std::filesystem::read_symlink("/proc/self/exe").parent_path();
 #endif
   }
+
+  void cleanup_old_packages() noexcept
+  {
+    try
+    {
+      const auto app = executable_directory().parent_path();
+      const auto root = app.parent_path();
+      if (app.filename() != "app" || !std::filesystem::is_regular_file(app / "package.json")
+        || std::filesystem::exists(root / ".update-lock"))
+        return;
+      for (const auto& entry : std::filesystem::directory_iterator(root))
+      {
+        const auto name = entry.path().filename().string();
+        if (name.starts_with("app.") && name.ends_with(".old") && !entry.is_symlink() && entry.is_directory())
+        {
+          std::error_code ignored;
+          std::filesystem::remove_all(entry.path(), ignored);
+        }
+      }
+    }
+    catch (...)
+    {
+      // An inaccessible or loaded backup must never prevent tracking startup.
+      return;
+    }
+  }
 }

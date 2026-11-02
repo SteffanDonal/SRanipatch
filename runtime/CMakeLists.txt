@@ -1,5 +1,19 @@
 cmake_minimum_required(VERSION 3.25)
 project(sranipatch VERSION 0.1.0 LANGUAGES C CXX)
+# Increment this revision when shipping driver changes, independently of application releases.
+file(
+    READ "${CMAKE_CURRENT_SOURCE_DIR}/driver/revision.txt"
+    sranipatch_driver_revision
+)
+string(STRIP "${sranipatch_driver_revision}" sranipatch_driver_revision)
+if(NOT sranipatch_driver_revision MATCHES "^[1-9][0-9]*$")
+    message(FATAL_ERROR "driver/revision.txt must be a positive integer")
+endif()
+set_property(
+    DIRECTORY
+    APPEND
+    PROPERTY CMAKE_CONFIGURE_DEPENDS driver/revision.txt
+)
 if(WIN32)
     enable_language(RC)
     configure_file(cmake/icon.rc.in "${CMAKE_CURRENT_BINARY_DIR}/icon.rc" @ONLY)
@@ -181,14 +195,22 @@ if(SRANIPATCH_BUILD_SERVER)
             ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/../assets/models/lip_model.mnn"
             "$<TARGET_FILE_DIR:sranipatch-server>/models/lip_model.mnn"
+        COMMENT "Stage tracking model"
         VERBATIM
     )
     add_dependencies(sranipatch-server sranipatch-model)
-    install(TARGETS sranipatch-server RUNTIME DESTINATION bin COMPONENT Runtime)
-    install(FILES ../assets/models/lip_model.mnn DESTINATION bin/models COMPONENT Runtime)
+    install(
+        TARGETS sranipatch-server
+        RUNTIME DESTINATION app/bin COMPONENT Runtime
+    )
+    install(
+        FILES ../assets/models/lip_model.mnn
+        DESTINATION app/bin/models
+        COMPONENT Runtime
+    )
     install(
         FILES third_party/vivefacialtracker-LICENSE.txt
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         COMPONENT Runtime
     )
 endif()
@@ -273,25 +295,43 @@ if(SRANIPATCH_BUILD_CLIENT)
             ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon-128.png"
             "$<TARGET_FILE_DIR:sranipatch-client>/icon-128.png"
+        COMMENT "Stage client assets"
     )
-    install(TARGETS sranipatch-client RUNTIME DESTINATION bin COMPONENT Runtime)
+    install(
+        TARGETS sranipatch-client
+        RUNTIME DESTINATION app/bin COMPONENT Runtime
+    )
     install(
         FILES
             assets/head.glb
             assets/fonts/Quicksand-Medium.ttf
             assets/icon-128.png
-        DESTINATION bin
+        DESTINATION app/bin
         COMPONENT Runtime
     )
     install(
         FILES assets/fonts/Quicksand-OFL.txt
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         COMPONENT Runtime
     )
 endif()
 
 if(SRANIPATCH_BUILD_DRIVER)
     add_library(driver_sranipatch MODULE src/driver/driver.cpp)
+    target_compile_definitions(
+        driver_sranipatch
+        PRIVATE SRANIPATCH_DRIVER_REVISION=${sranipatch_driver_revision}
+    )
+    add_executable(sranipatch-package-control src/package/control.cpp)
+    target_link_libraries(
+        sranipatch-package-control
+        PRIVATE sranipatch_runtime sranipatch_openvr
+    )
+    sranipatch_target(sranipatch-package-control)
+    install(
+        TARGETS sranipatch-package-control
+        RUNTIME DESTINATION app/bin COMPONENT Runtime
+    )
     target_include_directories(
         driver_sranipatch
         SYSTEM
@@ -313,26 +353,49 @@ if(SRANIPATCH_BUILD_DRIVER)
     install(
         TARGETS driver_sranipatch
         RUNTIME
-            DESTINATION driver/bin/${sranipatch_driver_platform}
+            DESTINATION app/driver/bin/${sranipatch_driver_platform}
             COMPONENT Runtime
         LIBRARY
-            DESTINATION driver/bin/${sranipatch_driver_platform}
+            DESTINATION app/driver/bin/${sranipatch_driver_platform}
             COMPONENT Runtime
     )
-    install(DIRECTORY driver/ DESTINATION driver COMPONENT Runtime)
+    install(DIRECTORY driver/ DESTINATION app/driver COMPONENT Runtime)
     install(
         PROGRAMS scripts/register-steamvr.sh
-        DESTINATION scripts
+        DESTINATION app/scripts
         COMPONENT Runtime
     )
     install(
         FILES scripts/register-steamvr.ps1
-        DESTINATION scripts
+        DESTINATION app/scripts
         COMPONENT Runtime
     )
 endif()
 
 if(BUILD_TESTING)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        if(SRANIPATCH_BUILD_DRIVER)
+            add_executable(sranipatch-package-fixture tests/package_fixture.cpp)
+            sranipatch_target(sranipatch-package-fixture)
+            add_test(
+                NAME package-update
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/package_tests.py"
+                    $<TARGET_FILE:sranipatch-package-fixture>
+                    $<TARGET_FILE:driver_sranipatch>
+            )
+        else()
+            add_test(
+                NAME package-update
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/package_tests.py"
+            )
+        endif()
+        set_tests_properties(package-update PROPERTIES TIMEOUT 120)
+    endif()
     if(SRANIPATCH_BUILD_DRIVER)
         add_executable(sranipatch-driver-tests tests/driver_tests.cpp)
         target_include_directories(
@@ -471,7 +534,71 @@ endif()
 
 set(CPACK_PACKAGE_NAME "sranipatch")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_GENERATOR "ZIP;TGZ")
+if(WIN32)
+    set(_sranipatch_package_platform windows-x64)
+    set(CPACK_GENERATOR ZIP)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    set(_sranipatch_package_platform linux-arm64)
+    set(CPACK_GENERATOR TGZ)
+else()
+    set(_sranipatch_package_platform linux-x64)
+    set(CPACK_GENERATOR TGZ)
+endif()
+set(SRANIPATCH_RELEASE_VERSION
+    "${PROJECT_VERSION}"
+    CACHE STRING
+    "Release tag recorded in packages"
+)
+configure_file(
+    scripts/package.json.in
+    "${CMAKE_CURRENT_BINARY_DIR}/package.json"
+    @ONLY
+)
+install(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/package.json"
+    DESTINATION app
+    COMPONENT Runtime
+)
+if(WIN32)
+    install(FILES scripts/package.ps1 DESTINATION app/scripts COMPONENT Runtime)
+    install(FILES scripts/github.url DESTINATION . COMPONENT Runtime)
+    foreach(command start install uninstall update)
+        configure_file(
+            scripts/launcher.cmd.in
+            "${CMAKE_CURRENT_BINARY_DIR}/${command}.cmd"
+            @ONLY
+        )
+        install(
+            FILES "${CMAKE_CURRENT_BINARY_DIR}/${command}.cmd"
+            DESTINATION .
+            COMPONENT Runtime
+        )
+    endforeach()
+else()
+    install(FILES scripts/package.py DESTINATION app/scripts COMPONENT Runtime)
+    foreach(
+        command
+        start
+        install
+        uninstall
+        update
+        github
+    )
+        configure_file(
+            scripts/launcher.sh.in
+            "${CMAKE_CURRENT_BINARY_DIR}/${command}"
+            @ONLY
+        )
+        install(
+            PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/${command}"
+            DESTINATION .
+            COMPONENT Runtime
+        )
+    endforeach()
+endif()
+set(CPACK_PACKAGE_FILE_NAME "sranipatch-${_sranipatch_package_platform}")
+set(CPACK_ARCHIVE_RUNTIME_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
+set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
 set(CPACK_COMPONENTS_ALL Runtime)
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
 if(
@@ -482,13 +609,13 @@ if(
         OR SRANIPATCH_BUILD_DRIVER
     )
 )
-    set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION bin)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION app/bin)
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT Runtime)
     include(InstallRequiredSystemLibraries)
     if(SRANIPATCH_BUILD_DRIVER)
         install(
             FILES ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
-            DESTINATION driver/bin/${sranipatch_driver_platform}
+            DESTINATION app/driver/bin/${sranipatch_driver_platform}
             COMPONENT Runtime
         )
     endif()

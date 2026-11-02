@@ -2,6 +2,8 @@
 
 ## Language
 
+**Installed package**: A SRanipatch package registered with SteamVR. Having the package's files on disk alone does not make it installed.
+
 **Observation**: The dashboard's view of a tracking server session and the freshness of its camera image and tracking results.
 
 **Server session**: One run of the tracking server. Tracking data from different sessions is distinct.

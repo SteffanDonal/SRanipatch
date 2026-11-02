@@ -79,6 +79,7 @@ namespace
         // Resolve interfaces before starting the worker; OpenVR's lazy helpers are not synchronized.
         settings_ = vr::VRSettings();
         log_ = vr::VRDriverLog();
+        settings_->SetInt32(section, "loadedRevision", SRANIPATCH_DRIVER_REVISION);
         worker_ = std::jthread([this](const std::stop_token& stop) { supervise(stop); });
       }
       catch (const std::exception& error)
@@ -193,6 +194,8 @@ namespace
       sranipatch::ChildProcess child;
       sranipatch::Recovery recovery;
       const auto directory = runtime_directory();
+      const auto encoded_directory = directory.u8string();
+      settings_->SetString(section, "runtimeDirectory", reinterpret_cast<const char*>(encoded_directory.c_str()));
 #ifdef _WIN32
       const auto executable = directory / "sranipatch-server.exe";
 #else

@@ -216,6 +216,7 @@ namespace
 // NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv)
 {
+  sranipatch::cleanup_old_packages();
   std::cout << std::unitbuf;
   try
   {

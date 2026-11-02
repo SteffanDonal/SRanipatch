@@ -27,19 +27,19 @@ function(sranipatch_add_mnn)
     endif()
     install(
         FILES ${mnn_SOURCE_DIR}/LICENSE.txt
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME MNN.txt
         COMPONENT Runtime
     )
     install(
         FILES ${mnn_SOURCE_DIR}/3rd_party/flatbuffers/LICENSE.txt
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME flatbuffers.txt
         COMPONENT Runtime
     )
     install(
         FILES ${mnn_SOURCE_DIR}/3rd_party/half/LICENSE.txt
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME half.txt
         COMPONENT Runtime
     )
@@ -114,13 +114,13 @@ function(sranipatch_add_opencv)
     )
     install(
         FILES ${opencv_SOURCE_DIR}/LICENSE
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME OpenCV.txt
         COMPONENT Runtime
     )
     install(
         FILES ${opencv_SOURCE_DIR}/3rdparty/zlib/LICENSE
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME zlib.txt
         COMPONENT Runtime
     )
@@ -140,7 +140,7 @@ function(sranipatch_add_gui)
     target_compile_definitions(sranipatch_glad PUBLIC GLFW_INCLUDE_NONE)
     install(
         FILES ${PROJECT_SOURCE_DIR}/third_party/glad/LICENSE
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME glad.txt
         COMPONENT Runtime
     )
@@ -162,7 +162,7 @@ function(sranipatch_add_gui)
     )
     install(
         FILES ${cgltf_SOURCE_DIR}/LICENSE
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME cgltf.txt
         COMPONENT Runtime
     )
@@ -228,19 +228,19 @@ function(sranipatch_add_gui)
     target_link_libraries(sranipatch_implot PUBLIC sranipatch_imgui)
     install(
         FILES ${implot_SOURCE_DIR}/LICENSE
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME implot.txt
         COMPONENT Runtime
     )
     install(
         FILES ${imgui_SOURCE_DIR}/LICENSE.txt
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME imgui.txt
         COMPONENT Runtime
     )
     install(
         FILES ${glfw_SOURCE_DIR}/LICENSE.md
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME glfw.txt
         COMPONENT Runtime
     )
@@ -296,7 +296,7 @@ function(sranipatch_add_openvr)
     target_link_libraries(sranipatch_openvr PRIVATE ${CMAKE_DL_LIBS})
     install(
         FILES ${openvr_SOURCE_DIR}/LICENSE
-        DESTINATION share/licenses
+        DESTINATION app/share/licenses
         RENAME OpenVR.txt
         COMPONENT Runtime
     )

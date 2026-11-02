@@ -4,6 +4,26 @@ Unofficial SRanipal runtime for the VIVE Facial Tracker & VRCFT on Windows and S
 
 C++20 server and Dear ImGui client. The server owns capture, MNN CPU inference and OSC UDP output. The client reads status and parameters through local mapped memory.
 
+## Install on Frame
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/steffandonal/sranipatch/main/runtime/scripts/get.sh | bash
+```
+
+Downloads the latest stable Linux ARM64 release to `~/.local/share/sranipatch` and registers it with SteamVR. To choose a folder, append `-s -- --dir /path/to/sranipatch` to `bash`. SteamVR restart prompts warn that the Frame display will go black temporarily.
+
+For Windows x64, extract the ZIP from [Releases](https://github.com/steffandonal/sranipatch/releases/latest) and run `install.cmd`.
+
+Package commands (`.cmd` on Windows):
+
+- `start`: run tracking manually without registering with SteamVR. Server arguments are forwarded.
+- `install`: register this folder and offer a SteamVR restart.
+- `uninstall`: unregister this folder; settings and files remain.
+- `update`: install the latest stable release, preserving settings and whether this folder is registered.
+- `github`: open the project repository (`github.url` on Windows).
+
+Updates briefly stop and relaunch running applications. SteamVR can stay active; only a changed driver revision prompts a restart. Old package directories are cleaned up on subsequent command launches when unlocked. Move an installed folder only after uninstalling, then run `install` at its new location. `--no-restart` (`-NoRestart` on Windows) suppresses restart prompts.
+
 ## Build
 
 Run build commands from `runtime/`. Final packages are written to `../output/`.
@@ -58,19 +78,7 @@ On Linux, omitting `osc_host` or setting it to an empty value, `""`, or `null` d
 
 The client opens a desktop window by default. `--overlay` presents the same interface as a SteamVR dashboard overlay on Windows and Linux; SteamVR must be running. Dismissing the dashboard hides the interface. The overlay close control and SteamVR shutdown exit the client.
 
-SteamVR integration is included in server builds; `-DSRANIPATCH_BUILD_DRIVER=OFF` disables it. Register a staged package before starting SteamVR:
-
-```powershell
-./out/package/scripts/register-steamvr.ps1 -DriverPath ./out/package/driver
-```
-
-```sh
-sh out/package/scripts/register-steamvr.sh out/package/driver
-```
-
-Restart SteamVR if it was running during registration. Its SRanipatch driver settings provide tracking startup, dashboard visibility, status, retry, and restart controls. The dashboard defaults to disabled and remembers its setting. Tracking and the dashboard run in separate processes; closing the dashboard leaves tracking running. Repeated failures stop automatic retries and remain visible in the status field.
-
-SteamVR stops servers it starts. An existing manually started server remains under manual control. Disable **Run tracking server** to release the managed server/client files for replacement, then enable it to resume without restarting SteamVR. Keep the registered driver directory unchanged. Registration scripts accept `-Unregister` on Windows or `--unregister` on Linux.
+SteamVR integration is included in server builds; `-DSRANIPATCH_BUILD_DRIVER=OFF` disables it. Run the staged package's `install` command (`install.cmd` on Windows) to register it. Its driver settings provide tracking startup, dashboard visibility, status, retry, and restart controls. The dashboard defaults to disabled and remembers its setting. SteamVR stops servers it starts; manually started servers remain under manual control.
 
 Linux GUI builds include GLFW Wayland and X11 backends; overlays use X11. `sh scripts/run-linux.sh` starts a manually owned server on the performance CPU cluster. SteamVR's dashboard toggle controls its overlay when connected.
 
