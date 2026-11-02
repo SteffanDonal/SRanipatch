@@ -1,0 +1,8 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="SRanipatch/SRanipatch.csproj" Type="493bbf96-f89a-42f0-8145-877efe42dd25">
+    <Platform Solution="Release|x64" Project="x64" />
+  </Project>
+</Solution>
