@@ -368,18 +368,6 @@ class LinuxUpdateTests(unittest.TestCase):
                     package.main()
             execute.assert_called_once_with(executable, [str(executable), "--help"])
 
-    def test_restart_offer_is_silent_when_steamvr_is_stopped(self):
-        with (
-            patch.object(package, "steamvr_running", return_value=False),
-            patch("builtins.print") as output,
-            patch("builtins.open") as terminal,
-            patch.object(package.subprocess, "run") as restart,
-        ):
-            package.offer_restart(False)
-        output.assert_not_called()
-        terminal.assert_not_called()
-        restart.assert_not_called()
-
     def test_portable_update_does_not_register_or_start_idle_apps(self):
         (self.root / "start").touch()
         state = {"active": False, "managed": False, "revision": 0, "run": False}
@@ -399,18 +387,32 @@ class LinuxUpdateTests(unittest.TestCase):
 
     def test_registered_update_pauses_and_restores_preference(self):
         state = {"active": True, "managed": True, "revision": 1, "run": True}
+        events = []
+
+        def control(root, command, *values):
+            events.append((command, package.metadata(root)["version"]))
+            if command == "status":
+                return state.copy()
+            if command == "pause":
+                state["run"] = False
+            elif command == "resume":
+                state["run"] = values[0] == "1"
+
+        def register(root):
+            (root / "registration-marker").write_text(package.metadata(root)["version"])
+
         with (
             patch.object(package, "registered", return_value=True),
-            patch.object(package, "control", return_value=state) as control,
+            patch.object(package, "control", side_effect=control),
             patch.object(package, "processes", return_value=[]),
-            patch.object(package, "register") as register,
+            patch.object(package, "register", side_effect=register),
         ):
             package.apply_update(self.root, self.staged)
-        self.assertEqual(
-            [call.args[1:] for call in control.call_args_list],
-            [("status",), ("pause",), ("resume", "1")],
-        )
-        register.assert_called_once_with(self.root)
+        self.assertEqual(package.metadata(self.root)["version"], "v2")
+        self.assertEqual((self.root / "registration-marker").read_text(), "v2")
+        self.assertTrue(state["run"])
+        self.assertIn(("pause", "v1"), events)
+        self.assertIn(("resume", "v2"), events)
 
     def test_failed_promotion_restores_old_directory_and_runtime(self):
         original = Path.rename

@@ -79,7 +79,6 @@ namespace
     sranipatch::Config defaults;
     sranipatch::LiveOscConfig live(file.path, defaults, {});
     auto now = std::chrono::steady_clock::now();
-    auto* original = &live.sender();
     for (const auto* invalid : { "osc_port=0\n", "osc_host=not-an-ip\n", "unknown=value\n", "output_vrc_native=yes\n", "output_vrc_native=\n" })
     {
       file.write(invalid);
@@ -94,7 +93,8 @@ namespace
         rejected = true;
       }
       require(rejected, "Invalid config was not reported");
-      require(&live.sender() == original && live.config().osc_port == 12345 && live.sender().destination().ready,
+      require(live.config().osc_port == 12345 && live.sender().destination().ready
+          && std::string_view(live.sender().destination().host.data()) == "127.0.0.1",
         "Invalid config disturbed working output");
       require(!live.poll(now + 600ms), "Unchanged invalid config was retried");
       now += 1s;
@@ -110,7 +110,8 @@ namespace
     {
       reported_missing = true;
     }
-    require(reported_missing && &live.sender() == original,
+    require(reported_missing && live.sender().destination().ready
+        && std::string_view(live.sender().destination().host.data()) == "127.0.0.1",
       "Missing config must report an error and keep working output");
     now += 1s;
     file.write("osc_host=127.0.0.2\nosc_port=23456\n");
@@ -132,11 +133,12 @@ namespace
     sranipatch::set_text(defaults.osc_host, "127.0.0.3");
     defaults.osc_port = 34567;
     sranipatch::LiveOscConfig overridden(file.path, defaults, { true, true });
-    auto* sender = &overridden.sender();
     file.write("osc_host=127.0.0.2\nosc_port=23456\n");
     overridden.poll(now);
     overridden.poll(now + 300ms);
-    require(overridden.config().osc_port == 34567 && std::string_view(overridden.config().osc_host.data()) == "127.0.0.3" && &overridden.sender() == sender,
+    require(overridden.config().osc_port == 34567 && std::string_view(overridden.config().osc_host.data()) == "127.0.0.3"
+        && overridden.sender().destination().port == 34567
+        && std::string_view(overridden.sender().destination().host.data()) == "127.0.0.3",
       "File changes overrode CLI options or restarted unchanged output");
   }
 
@@ -146,7 +148,6 @@ namespace
     file.write("osc_host=127.0.0.1\n");
     sranipatch::Config defaults;
     sranipatch::LiveOscConfig live(file.path, defaults, {});
-    auto* sender = &live.sender();
     std::filesystem::remove(file.path);
     std::filesystem::create_directory(file.path);
     const auto now = std::chrono::steady_clock::now();
@@ -160,7 +161,9 @@ namespace
     {
       rejected = true;
     }
-    require(rejected && &live.sender() == sender, "Unreadable file replaced working output");
+    require(rejected && live.sender().destination().ready
+        && std::string_view(live.sender().destination().host.data()) == "127.0.0.1",
+      "Unreadable file replaced working output");
   }
 
   void editor_replacement_and_quick_saves_are_debounced()

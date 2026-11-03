@@ -1,6 +1,7 @@
 #pragma once
 #include "sranipatch/protocol.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -28,7 +29,7 @@ namespace sranipatch
     OscSender(const OscSender&) = delete;
     OscSender& operator=(const OscSender&) = delete;
     bool send(std::span<const float> values);
-    void refresh();
+    void refresh(std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
     bool waiting_for_peer() const;
     const OscDestination& destination() const;
 

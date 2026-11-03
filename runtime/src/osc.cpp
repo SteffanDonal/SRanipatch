@@ -145,9 +145,8 @@ namespace sranipatch
     std::string peer;
     std::chrono::steady_clock::time_point next_discovery {};
 
-    void refresh()
+    void refresh(std::chrono::steady_clock::time_point now)
     {
-      const auto now = std::chrono::steady_clock::now();
       if (!automatic || now < next_discovery)
         return;
       next_discovery = now + std::chrono::seconds(2);
@@ -198,7 +197,7 @@ namespace sranipatch
     impl_->automatic = host.empty();
     impl_->port = port;
     if (impl_->automatic)
-      impl_->refresh();
+      impl_->refresh(std::chrono::steady_clock::now());
     else
       impl_->connect_host(host, port);
 #endif
@@ -251,10 +250,12 @@ namespace sranipatch
 
   OscSender::~OscSender() = default;
 
-  void OscSender::refresh()
+  void OscSender::refresh(std::chrono::steady_clock::time_point now)
   {
 #ifndef _WIN32
-    impl_->refresh();
+    impl_->refresh(now);
+#else
+    (void)now;
 #endif
   }
 
@@ -275,7 +276,7 @@ namespace sranipatch
   bool OscSender::send(std::span<const float> values)
   {
 #ifndef _WIN32
-    impl_->refresh();
+    impl_->refresh(std::chrono::steady_clock::now());
     if (impl_->socket < 0)
       return true;  // Waiting for Steam Link is not a failed send.
 #endif
