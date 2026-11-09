@@ -2,6 +2,22 @@
 
 Unofficial SRanipal runtime for the **VIVE Facial Tracker**, with a Receiver for VRCFaceTracking. Supports Windows PCVR and Steam Frame. Eye tracking is not supported.
 
+## AI Usage
+
+<table>
+  <tr>
+    <td style="text-align:center">
+      <img src=".github/ai-w.svg" alt="AI:W" width="auto" height="48">
+    </td>
+    <td>
+      AI tools have read/write access to code.<br>
+      All code is reviewed and tested by a software developer.
+    </td>
+  </tr>
+</table>
+
+Read more at [0rwx.com](https://0rwx.com/)
+
 ## Choose your setup
 
 Install Receiver on your Windows PC and Runtime on the device running SteamVR.
