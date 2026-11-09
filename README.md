@@ -1,6 +1,10 @@
 # SRanipatch
 
-Unofficial SRanipal runtime for the **VIVE Facial Tracker**, with a Receiver for VRCFaceTracking. Supports Windows PCVR and Steam Frame. Eye tracking is not supported.
+Unofficial SRanipal runtime for the **VIVE Facial Tracker**, bypassing the need to use the SRanipal SDK.
+
+The face tracking model runs _locally_, and only the inferred parameters are streamed over OSC. No video streaming involved!
+
+Eye tracking is not supported.
 
 ## AI Usage
 
@@ -18,38 +22,31 @@ Unofficial SRanipal runtime for the **VIVE Facial Tracker**, with a Receiver for
 
 Read more at [0rwx.com](https://0rwx.com/)
 
-## Choose your setup
+## Supported Configurations
 
-Install Receiver on your Windows PC and Runtime on the device running SteamVR.
+| Name                 | Headset          | Tracker Connection | Runtime Platform |
+| -------------------- | ---------------- | ------------------ | ---------------- |
+| Standalone Inference | Steam Frame      | Steam Frame        | Linux ARM64      |
+| Local Tethered       | Any PCVR Headset | Your PC            | Windows x64      |
 
-| Headset | Receiver on Windows PC | Runtime | Windows Firewall rule |
-| --- | --- | --- | --- |
-| PCVR headset | `SRanipatch.VRCFT.win-x64.zip` | `SRanipatch-Runtime.win-x64.zip` | Not required for local tracking |
-| Steam Frame | `SRanipatch.VRCFT.win-x64.zip` | `SRanipatch-Runtime.linux-arm64.tar.gz` on Frame | Required on your PC |
+## Mounting Hardware
 
-Get packages from the [latest release](https://github.com/SteffanDonal/SRanipatch/releases/latest).
+Need a way to mount the VIVE Facial Tracker to your Steam Frame?
+
+A 3d-printable solution is [available here](https://www.printables.com/model/1902859-bonn-mounts-for-steam-frame-babble-vft-vive-facial).
 
 ## Setup
 
-Before installing Runtime, install and run SteamVR at least once on the device that will run it: your PC for PCVR, or Frame for Steam Frame.
-
-### 1. Install Receiver on your Windows PC
+### Install the VRCFT module on your Windows PC
 
 1. Install the current Steam version of [VRCFaceTracking](https://docs.vrcft.io/docs/intro/getting-started).
-2. Download `SRanipatch.VRCFT.win-x64.zip` from the latest release. Leave it zipped.
-3. In VRCFaceTracking, open **Module Registry**, click **+** (**Install from .zip**), and select the Receiver ZIP.
+2. Download `SRanipatch.VRCFT.win-x64.zip` from the [latest release](https://github.com/SteffanDonal/SRanipatch/releases/latest). Leave it zipped.
+3. In VRCFaceTracking, open **Module Registry**, click **+** (**Install from .zip**), and select the downloaded ZIP.
 
-### 2. Install Runtime for your headset
+- If you have a Steam Frame, and the VFT is connected to it, continue to the [next step](#standalone-inference-setup).
+- If your VFT is connected directly to your Windows PC, continue to [local tethered setup](#local-tethered-setup).
 
-#### PCVR headset
-
-1. Download `SRanipatch-Runtime.win-x64.zip` and extract it into a folder you will keep.
-2. Run `install.cmd` from that folder to register Runtime with SteamVR. Accept the SteamVR restart offer if prompted.
-3. Connect your VIVE Facial Tracker to the PC and start SteamVR and VRCFaceTracking.
-
-Keep the extracted folder: SteamVR runs Runtime from this location.
-
-#### Steam Frame
+### Standalone Inference Setup
 
 On **Steam Frame**, open a terminal and run:
 
@@ -57,34 +54,50 @@ On **Steam Frame**, open a terminal and run:
 curl -fsSL https://raw.githubusercontent.com/SteffanDonal/SRanipatch/main/runtime/scripts/get.sh | bash
 ```
 
-The installer downloads the latest stable Linux Runtime, checks its checksum, and registers it with SteamVR. If USB Video (UVC) support is missing, it offers to set up [steam-frame-uvc](https://github.com/mavishtheblue/steam-frame-uvc). Follow its prompts; setup can require sudo. Restarting SteamVR temporarily makes the Frame display go black.
+The installer:
 
-Connect the VIVE Facial Tracker to Frame. Connect Frame to your Windows PC using Steam Link; Runtime discovers that PC automatically. Run VRCFaceTracking on the PC and complete the firewall step below.
+1. Downloads & validates the latest release
+2. Checks for USB Video (UVC) support
+   - If not available, it will offer to install [steam-frame-uvc](https://github.com/mavishtheblue/steam-frame-uvc) for you. Follow the prompts, **it requires `sudo`**.
+3. Registers SRanipatch with SteamVR and restarts it. Your headset's display will temporarily go black.
 
-For manual installation, extract `SRanipatch-Runtime.linux-arm64.tar.gz` on Frame into a folder you will keep and run `./install` from that folder. See [Runtime instructions](runtime/README.md#install-on-frame) for installation options.
+Once installed, SRanipatch will automatically start working whenever you are streaming PCVR _and_ your VIVE Facial Tracker is connected.
 
-### 3. Steam Frame: allow tracking through Windows Firewall
+#### Windows Firewall Rule
 
-Run this on your **Windows PC**, not on Frame. Receiver needs inbound **UDP port 9337** to receive tracking from Frame.
+The VRCFT module listens to inbound **UDP port 9337** to receive tracking from Steam Frame.
 
-1. Find **Windows PowerShell** in Start, right-click it, and choose **Run as administrator**.
+1. In Windows, find **Windows PowerShell** in Start, right-click it, and choose **Run as administrator**.
 2. Run:
 
 ```powershell
 New-NetFirewallRule -DisplayName "SRanipatch (UDP 9337)" -Direction Inbound -Protocol UDP -LocalPort 9337 -Action Allow -Profile Any
 ```
 
-The rule takes effect immediately.
+The rule takes effect immediately, you will not need to restart anything.
 
-## Update Runtime
+### Local Tethered Setup
 
-- **Windows:** run `update.cmd` in your Runtime folder.
-- **Steam Frame:** run `./update` in your Runtime folder (default `~/.local/share/sranipatch`), or rerun the bootstrap command above.
+1. Download `SRanipatch-Runtime.win-x64.zip` and extract it into a folder you will keep.
+2. Run `install.cmd` from that folder to register SRanipatch with SteamVR. Accept the SteamVR restart offer if prompted.
+3. Connect your VIVE Facial Tracker to the PC, start SteamVR and VRCFaceTracking.
 
-The updater preserves settings and SteamVR registration. It briefly restarts running tracking applications and prompts for a SteamVR restart if the driver changes.
+SRanipatch will automatically start working whenever SteamVR is running and your VIVE Facial Tracker is connected.
 
-## More information
+## Updating
 
-- [Runtime commands, configuration, and building](runtime/README.md)
-- [Receiver and building](receiver/README.md)
-- [Creating a release from build artifacts](docs/releases.md)
+- **Standalone Inference:** run `./update` in your SRanipatch folder (default `~/.local/share/sranipatch`), or rerun the [setup command](#standalone-inference-setup).
+- **Local Tethered:** run `update.cmd` in your SRanipatch folder.
+
+## More Reading
+
+If you wish to manually install SRanipatch, uninstall it, or debug your setup, you may learn more about that in the [SRanipatch runtime README](runtime/README.md).
+
+# Support
+
+Raise an issue if you are encountering issues.
+
+Runtime logs are stored here:
+
+- Steam Frame: `~/.local/state/sranipatch/logs`
+- Windows: `%LOCALAPPDATA%\sranipatch\logs`
