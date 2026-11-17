@@ -1,0 +1,14 @@
+manifest: 0
+provides: [face]
+implements:
+  - vrcft:module
+  - openvr:driver
+runs_on: both
+install: curl -fsSL https://raw.githubusercontent.com/SteffanDonal/SRanipatch/main/runtime/scripts/get.sh | bash
+tested:
+  - steamos: "0.5.9"
+    build: "20261113.6134720"
+    steamvr: "2.19.3"
+    channel: beta
+    date: 2026-11-13
+    result: works
